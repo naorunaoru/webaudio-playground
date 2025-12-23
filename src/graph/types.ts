@@ -1,0 +1,72 @@
+export type PortKind = "audio" | "midi" | "cc" | "automation";
+export type PortDirection = "in" | "out";
+
+// Augment this interface from `src/nodes/<node>/types.ts` to register new node types.
+export interface NodeTypeMap {}
+
+export type NodeType = keyof NodeTypeMap & string;
+
+export type NodeId = string;
+export type ConnectionId = string;
+
+export type PortId = string;
+
+export type PortSpec = Readonly<{
+  id: PortId;
+  name: string;
+  kind: PortKind;
+  direction: PortDirection;
+}>;
+
+export type ConnectionEndpoint = Readonly<{
+  nodeId: NodeId;
+  portId: PortId;
+}>;
+
+export type GraphConnection = Readonly<{
+  id: ConnectionId;
+  kind: PortKind;
+  from: ConnectionEndpoint;
+  to: ConnectionEndpoint;
+}>;
+
+export type GraphNodeBase<TType extends string, TState> = Readonly<{
+  id: NodeId;
+  type: TType;
+  x: number;
+  y: number;
+  state: TState;
+}>;
+
+export type GraphNodeBaseUntyped = GraphNodeBase<string, unknown>;
+
+export type GraphNode = {
+  [K in keyof NodeTypeMap & string]: GraphNodeBase<K, NodeTypeMap[K]>;
+}[keyof NodeTypeMap & string];
+
+export type GraphState = {
+  nodes: GraphNode[];
+  connections: GraphConnection[];
+};
+
+export type MidiEvent =
+  | {
+      type: "noteOn";
+      note: number;
+      velocity: number;
+      channel: number;
+      atMs: number;
+    }
+  | {
+      type: "noteOff";
+      note: number;
+      channel: number;
+      atMs: number;
+    }
+  | {
+      type: "cc";
+      controller: number;
+      value: number; // 0..127
+      channel: number;
+      atMs: number;
+    };

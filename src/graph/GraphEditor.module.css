@@ -1,0 +1,79 @@
+.root {
+  position: relative;
+  height: 560px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.hud {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  z-index: 2;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(8, 10, 14, 0.5);
+  backdrop-filter: blur(6px);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.hint {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+:global(svg text) {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.uiLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.nodeUi {
+  position: absolute;
+  pointer-events: auto;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: auto;
+}
+
+.nodeUi :global(button),
+.nodeUi :global(select),
+.nodeUi :global(input) {
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.nodeUi :global(input[type="range"]) {
+  padding: 0;
+}
+
+.nodeUi :global(button) {
+  cursor: pointer;
+}
