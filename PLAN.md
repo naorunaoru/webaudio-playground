@@ -1,93 +1,67 @@
-# WebAudio Playground (SunVox-like) — Coarse Plan
+# WebAudio Playground — Plan
 
-## Product Goals
-- **Graph-first**: A node-based audio/MIDI/automation graph where each node can have any number of typed inputs/outputs.
-- **Tracker-like sequencer**: Pattern editor that emits MIDI and automation into the graph.
-- **Node UI**: Nodes may render anything from a simple activity indicator to full synth controls.
-- **Live-coding feel**: Vite HMR updates UI and node code without restarting the audio engine.
+## Current Status
 
-## Core Concepts
-### Port Types
-- **Audio**: Web Audio `AudioNode` connections (stereo/mono; future: multichannel).
-- **MIDI**: Event stream (note on/off, CC, program, clock).
-- **Automation**: Time-stamped parameter/envelope events (continuous control, curves, LFO outputs).
+- Graph editor
+  - [x] Create nodes, drag to move, pan canvas
+  - [x] Connect typed ports (audio/midi/cc/automation), reject mismatches
+  - [x] Delete nodes and connections (keyboard)
+  - [x] Persist graph in `localStorage`
+  - [x] Render node UI panels in-place
+- Node module system (graph + optional audio runtime)
+  - [x] Built-in nodes: `midiSource`, `ccSource`, `oscillator`, `delay`, `audioOut`
+  - [x] MIDI/CC routing through connections (and optional state patches via `onMidi`)
+- Audio engine
+  - [x] Instantiate/remove audio runtimes based on graph
+  - [x] Reconnect audio edges on graph change
+  - [x] Dispatch MIDI note events to audio runtimes (`handleMidi`)
+  - [x] Basic level metering (per-node + master)
+- UI component library
+  - [ ] Knob
+  - [ ] Slider
+  - [ ] Envelope (ADSR, automation)
+  - [ ] Waveform
+- Sampler support
+  - [ ] We need this
+  - [ ] How to load and store?
+- Funni synths
+  - [ ] FM OPL-like synth (possible via subgraph?)
+  - [ ] Wavetable synth (hi Serum)
 
-### Graph Model (engine-facing)
-- `Graph` contains `NodeInstance`s and `Connection`s.
-- `NodeInstance` references a `NodeDefinition` (code/module) plus its serialized state.
-- `Connection` links `(fromNode, fromPort)` → `(toNode, toPort)` with a `type` (audio/midi/automation).
-- Nodes may expose:
-  - `ports`: dynamic list (allow “add output”, “add input” patterns).
-  - `params`: named parameters (for automation + UI binding).
-  - `ui`: React component (or view model) that edits `state` and `params`.
+## Nested graphs
 
-## High-level Architecture
-### Split: UI thread vs. Audio engine
-- **UI thread**
-  - Graph editor, node UIs, tracker UI.
-  - Maintains authoritative *edit* state and sends incremental patches to the engine.
-- **Audio engine**
-  - Runs on `AudioWorklet` (preferred) with a lightweight message protocol.
-  - Owns actual `AudioNode`/DSP objects and schedules events.
-  - Must be resilient to UI reloads/HMR: keep engine in a stable global singleton.
+Goal: graphs are nestable; each graph has audio + MIDI + CC inputs/outputs. The top-level graph bridges to the host (audio devices / WebMIDI) and/or hosts sequencers; parent graphs pass streams down into nested graphs.
 
-### Message Protocol (UI → Engine)
-- `graph/patch`: add/remove node, add/remove connection, update node state, update params.
-- `transport/*`: play/stop/seek/bpm.
-- `midi/events`: batch of events with sample-accurate timestamps (or AudioContext time).
+- [ ] Define a “graph as node” model (subgraph instances)
+  - [ ] Explicit boundary nodes (no implicit forwarding)
+    - [ ] Host to graph I/O mapping is done outside the graph scope
+    - [ ] A graph uses dedicated I/O nodes (e.g. `graphAudioIn`, `graphAudioOut`, `graphMidiIn`, `graphMidiOut`, `graphCcIn`, `graphCcOut`)
+    - [ ] Subgraph node ports are derived from those nodes, and parent wires into/out of them explicitly
+  - [ ] Cycle/feedback policy across boundaries (allow/deny, audio vs event loops)
+- [ ] Define I/O semantics per kind
+  - [ ] Audio: channel format and (future) multichannel strategy
+  - [ ] Events: define `midi` (= notes only), `cc` (= MIDI CC messages), other?
+  - [ ] Timebase: choose canonical time (`AudioContext.currentTime` / sample frames) and conversions
+- [ ] Build navigation + UX for nested graphs
+  - [ ] Enter/exit subgraph, breadcrumb, “edit in place” vs “open in tab”
+  - [ ] Expose subgraph interface ports visually on the subgraph node
+  - [ ] Copy/paste or “promote to subgraph” workflow (select nodes → extract)
+  - [ ] UI for exposing state/controls from a nested graph
+- [ ] Host integration (top-level only)
+  - [ ] Audio input node(s): mic/line-in via `getUserMedia` + device selection
+  - [ ] Audio output node(s): destination routing + master controls
+  - [ ] MIDI in/out nodes: WebMIDI permissions + device selection (optional)
+- [ ] Sequencer foundation (many sequencers per workflow)
+  - [ ] Transport: play/stop/tempo + global clock service
+  - [ ] Event scheduler: lookahead queue to reduce jitter
+  - [ ] Minimal “event source” node API so piano roll / tracker / live-coding share outputs
 
-### Persistence
-- Save/load graph + patterns as JSON (localStorage initially; later: file import/export).
+## Design Decisions
 
-## Vite HMR Strategy (no audio restart)
-- Create a **persistent engine singleton** stored on `globalThis`:
-  - On HMR, UI modules reload but `globalThis.__engine` remains.
-  - UI re-attaches to the existing engine via a small “engine client” wrapper.
-- Use **hot-swappable NodeDefinitions**:
-  - UI-side `NodeDefinition` modules can HMR-update.
-  - Engine keeps `NodeInstance` DSP stable unless a definition requires rebuild.
-  - Support two update modes:
-    1) **UI-only** changes: swap node UI component, keep DSP untouched.
-    2) **DSP changes**: version bump triggers node rebuild while preserving state where possible.
-
-## MVP Slice (first usable loop)
-1. **Scaffold**
-   - Vite + TypeScript app with a minimal UI.
-   - Engine singleton with an `AudioContext` and one test oscillator.
-2. **Graph editor v0**
-   - Create/move nodes on a canvas, connect ports, delete nodes/edges.
-   - Validate typed connections (audio↔audio, midi↔midi, automation↔automation).
-3. **Node system v0**
-   - A small set of built-in nodes:
-     - `AudioOut` (destination)
-     - `Oscillator` (audio out)
-     - `Gain` (audio in/out, automatable `gain`)
-     - `MidiKeyboard` (midi out)
-     - `MidiToFreq` (midi in → automation out)
-4. **Tracker v0**
-   - One pattern grid that emits note events to a selected MIDI output node.
-   - Transport: play/stop, bpm.
-5. **Automation v0**
-   - Map automation signals to node params (e.g., `gain`, oscillator frequency).
-6. **HMR proof**
-   - Editing a node UI component preserves audio output.
-   - Refresh/reload UI reconnects to the same engine instance.
-
-## Near-term Enhancements
-- Node library system (registry, categories, search, favorites).
-- Better scheduling: lookahead clock + jitter control for MIDI/automation.
-- Visual debugging: meters, scopes, MIDI event monitor.
-- Undo/redo for graph edits.
-
-## Stretch Goals
-- Polyphonic voice allocation for synth nodes.
-- Sample playback + slicing.
-- Subgraphs / macros (module containers).
-- WebMIDI input/output integration.
-- Export: render to WAV via OfflineAudioContext.
-
-## Open Decisions
-- UI framework (React/Solid/Vanilla) and graph UI approach (React Flow vs custom canvas).
-- Engine location: main thread with `AudioNode`s vs deeper DSP in `AudioWorkletProcessor`.
-- Exact event format for MIDI/automation and timebase (AudioContext time vs sample frames).
-
+- [ ] WE NEED SAMPLES
+- [ ] A node can't expose all its parameters via CC, node UI would be overloaded. Add a flag to a control?
+- [ ] Should multiple event sources feed one target? How should it be handled?
+- [ ] Latency budget (audio-in + scheduling jitter) and what “good enough” means in-browser
+- [ ] Hot-swap story for subgraphs (edit nested graph while audio runs)
+- [ ] Serialization/versioning of graphs and node states (migrations)
+- [ ] What if audio data can also be used to control parameters?
