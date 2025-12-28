@@ -9,10 +9,10 @@ export type AudioNodeInstance<TNode extends GraphNode = GraphNode> = {
   onRemove?: () => void;
   getLevel?: () => number;
   getWaveform?: (length: number) => Float32Array | null;
+  getDebug?: () => unknown;
 };
 
 export type AudioNodeFactory<TNode extends GraphNode = GraphNode> = Readonly<{
   type: TNode["type"];
   create: (ctx: AudioContext, nodeId: NodeId) => AudioNodeInstance<TNode>;
 }>;
-

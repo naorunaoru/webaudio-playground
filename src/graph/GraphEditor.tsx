@@ -258,6 +258,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     const [selected, setSelected] = useState<Selected>({ type: "none" });
     const [status, setStatus] = useState<string | null>(null);
     const [levels, setLevels] = useState<Record<string, number>>({});
+    const [debug, setDebug] = useState<Record<string, unknown>>({});
     const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
     useEffect(() => {
@@ -310,12 +311,14 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       const tick = () => {
         const engine = getAudioEngine();
         setLevels(engine.getLevels());
+        setDebug(engine.getDebug());
         raf = window.requestAnimationFrame(tick);
       };
       if (audioState === "running") {
         raf = window.requestAnimationFrame(tick);
       } else {
         setLevels({});
+        setDebug({});
       }
       return () => window.cancelAnimationFrame(raf);
     }, [audioState]);
@@ -802,7 +805,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                 }}
                 onPointerDown={(e) => e.stopPropagation()}
               >
-                <Ui node={node} onPatchNode={patchNode} onEmitMidi={emitMidi} />
+                <Ui node={node} onPatchNode={patchNode} onEmitMidi={emitMidi} debug={debug[node.id]} />
               </div>
             );
           })}

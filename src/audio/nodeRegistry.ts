@@ -13,3 +13,12 @@ export function createBuiltInAudioNodeFactories(masterInput: AudioNode): AudioNo
   }
   return out;
 }
+
+export function listBuiltInAudioWorkletModules(): ReadonlyArray<string> {
+  const urls = new Set<string>();
+  for (const type of Object.keys(NODE_MODULES) as Array<GraphNode["type"]>) {
+    const mod = NODE_MODULES[type];
+    for (const url of mod.workletModules ?? []) urls.add(url);
+  }
+  return [...urls];
+}

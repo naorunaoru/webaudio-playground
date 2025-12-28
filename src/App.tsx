@@ -31,6 +31,7 @@ export function App() {
                     | "ccSource"
                     | "oscillator"
                     | "delay"
+                    | "limiter"
                     | "audioOut"
                     | "";
                   if (!type) return;
@@ -44,6 +45,7 @@ export function App() {
                 <option value="ccSource">CC Source</option>
                 <option value="oscillator">Oscillator</option>
                 <option value="delay">Delay</option>
+                <option value="limiter">Limiter</option>
                 <option value="audioOut">Output</option>
               </select>
               <button

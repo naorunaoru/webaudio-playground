@@ -3,6 +3,8 @@
 This project treats each node as a small “plugin module” that can provide:
 - **Graph/UI definition** (ports + React UI + optional MIDI/CC handling)
 - **Audio runtime factory** (optional; for nodes that produce/consume audio)
+- **AudioWorklet modules** (optional; for DSP on the render thread)
+- **WASM build step** (optional; for nodes implemented in Rust/C/C++ → WebAssembly)
 - **State type** (per-node `state` typing integrated into the global `GraphNode` union)
 
 The goal is that adding a node mostly means adding a new folder under `src/nodes/<yourNode>/`.
@@ -16,6 +18,9 @@ src/nodes/<yourNode>/
   graph.tsx
   audio.ts        # optional
   index.ts
+  processor.ts    # optional (AudioWorkletProcessor)
+  build-wasm.sh   # optional (node-local WASM build step)
+  build-wasm.mjs  # optional (node-local WASM build step)
 ```
 
 Existing examples:
@@ -148,6 +153,10 @@ export const fooNode: NodeModule<any> = {
   type: "foo",
   graph: fooGraph,
   audioFactory: fooAudioFactory, // omit if graph-only
+  // Optional: list of AudioWorklet module URLs to preload before audio starts.
+  // Typically: `import processorUrl from "./processor.ts?url";`
+  // then `workletModules: [processorUrl]`.
+  workletModules: [],
 };
 ```
 
@@ -166,6 +175,17 @@ export const NODE_MODULES = {
 The rest of the app derives its registries from `NODE_MODULES`:
 - UI graph registry: `src/graph/nodeRegistry.ts`
 - Audio factory registry: `src/audio/nodeRegistry.ts`
+
+## WebAssembly Node Builds (Optional)
+If a node needs a build step (e.g. Rust → `.wasm`), keep it **self-contained in the node folder**:
+- `src/nodes/<yourNode>/build-wasm.sh` (shell), or
+- `src/nodes/<yourNode>/build-wasm.mjs` (Node)
+
+The repo script `npm run build-wasm` runs `scripts/build-wasm.mjs`, which scans `src/nodes/*/` for those files and executes them.
+
+Notes:
+- `npm run dev` and `npm run build` run `npm run build-wasm` first (via `predev` / `prebuild`).
+- Set `SKIP_WASM=1` to bypass WASM builds (useful if you’re working on graph/UI only).
 
 ## How Events Flow (MIDI/CC)
 Event type is `MidiEvent` in `src/graph/types.ts` (includes `noteOn`, `noteOff`, `cc`).
@@ -193,4 +213,3 @@ On each graph change:
 - Prefer using `onMidi(..., portId)` to keep CC inputs separate (e.g. oscillator’s `cc_attack`).
 - If your runtime needs to clean up, implement `onRemove`.
 - If you expose `getLevel()`, you’ll get activity dots “for free” in the graph renderer.
-

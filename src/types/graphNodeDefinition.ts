@@ -5,6 +5,7 @@ export type NodeUiProps<TNode extends GraphNode> = Readonly<{
   node: TNode;
   onPatchNode: (nodeId: NodeId, patch: Partial<TNode["state"]>) => void;
   onEmitMidi?: (nodeId: NodeId, event: MidiEvent) => void;
+  debug?: unknown;
 }>;
 
 export type NodeDefinition<TNode extends GraphNode> = Readonly<{

@@ -1,5 +1,5 @@
 import type { GraphNode, GraphState, MidiEvent, NodeId } from "../graph/types";
-import { createBuiltInAudioNodeFactories } from "./nodeRegistry";
+import { createBuiltInAudioNodeFactories, listBuiltInAudioWorkletModules } from "./nodeRegistry";
 import type { AudioNodeFactoryMap } from "./nodeRegistry";
 import type { AudioNodeFactory, AudioNodeInstance } from "../types/audioRuntime";
 
@@ -17,6 +17,7 @@ export class AudioEngine {
   private outputNodeIds = new Set<NodeId>();
   private factories: AudioNodeFactoryMap | null = null;
   private factoryOverrides: AudioNodeFactoryMap = {};
+  private loadedWorkletModules = new Set<string>();
 
   getStatus(): EngineStatus | null {
     if (!this.audioContext) return null;
@@ -36,6 +37,14 @@ export class AudioEngine {
         : 0;
     for (const outId of this.outputNodeIds) out[outId] = master;
 
+    return out;
+  }
+
+  getDebug(): Record<NodeId, unknown> {
+    const out: Record<NodeId, unknown> = {};
+    for (const [id, n] of this.audioNodes) {
+      if (n.getDebug) out[id] = n.getDebug();
+    }
     return out;
   }
 
@@ -83,6 +92,7 @@ export class AudioEngine {
 
   async ensureRunning(): Promise<void> {
     const ctx = this.ensureContext();
+    await this.ensureBuiltInWorkletsLoaded(ctx);
     if (ctx.state !== "running") await ctx.resume();
   }
 
@@ -91,6 +101,7 @@ export class AudioEngine {
     if (ctx.state === "running") {
       await ctx.suspend();
     } else {
+      await this.ensureBuiltInWorkletsLoaded(ctx);
       await ctx.resume();
     }
     return ctx.state;
@@ -189,6 +200,17 @@ export class AudioEngine {
     if (!n) return;
     n.onRemove?.();
     this.audioNodes.delete(nodeId);
+  }
+
+  private async ensureBuiltInWorkletsLoaded(ctx: AudioContext): Promise<void> {
+    const urls = listBuiltInAudioWorkletModules();
+    if (urls.length === 0) return;
+
+    for (const url of urls) {
+      if (this.loadedWorkletModules.has(url)) continue;
+      await ctx.audioWorklet.addModule(url);
+      this.loadedWorkletModules.add(url);
+    }
   }
 }
 

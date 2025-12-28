@@ -10,5 +10,5 @@ export type NodeModule<TNode extends GraphNode = GraphNode> = Readonly<{
   type: TNode["type"];
   graph: NodeDefinition<TNode>;
   audioFactory?: (services: AudioNodeServices) => AudioNodeFactory<TNode>;
+  workletModules?: ReadonlyArray<string>;
 }>;
-
