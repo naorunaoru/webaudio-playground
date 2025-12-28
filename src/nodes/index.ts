@@ -4,6 +4,7 @@ import { midiSourceNode } from "./midiSource";
 import { ccSourceNode } from "./ccSource";
 import { oscillatorNode } from "./oscillator";
 import { delayNode } from "./delay";
+import { reverbNode } from "./reverb";
 import { limiterNode } from "./limiter";
 import { samplePlayerNode } from "./samplePlayer";
 import { audioOutNode } from "./audioOut";
@@ -13,6 +14,7 @@ export const NODE_MODULES = {
   ccSource: ccSourceNode,
   oscillator: oscillatorNode,
   delay: delayNode,
+  reverb: reverbNode,
   limiter: limiterNode,
   samplePlayer: samplePlayerNode,
   audioOut: audioOutNode,

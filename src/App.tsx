@@ -31,6 +31,7 @@ export function App() {
                     | "ccSource"
                     | "oscillator"
                     | "delay"
+                    | "reverb"
                     | "limiter"
                     | "samplePlayer"
                     | "audioOut"
@@ -46,6 +47,7 @@ export function App() {
                 <option value="ccSource">CC Source</option>
                 <option value="oscillator">Oscillator</option>
                 <option value="delay">Delay</option>
+                <option value="reverb">Reverb</option>
                 <option value="limiter">Limiter</option>
                 <option value="samplePlayer">Sample Player</option>
                 <option value="audioOut">Output</option>
