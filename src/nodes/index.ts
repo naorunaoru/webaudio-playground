@@ -5,6 +5,7 @@ import { ccSourceNode } from "./ccSource";
 import { oscillatorNode } from "./oscillator";
 import { delayNode } from "./delay";
 import { limiterNode } from "./limiter";
+import { samplePlayerNode } from "./samplePlayer";
 import { audioOutNode } from "./audioOut";
 
 export const NODE_MODULES = {
@@ -13,6 +14,7 @@ export const NODE_MODULES = {
   oscillator: oscillatorNode,
   delay: delayNode,
   limiter: limiterNode,
+  samplePlayer: samplePlayerNode,
   audioOut: audioOutNode,
 } as const satisfies Record<GraphNode["type"], NodeModule<any>>;
 

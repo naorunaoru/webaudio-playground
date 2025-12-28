@@ -32,6 +32,7 @@ export function App() {
                     | "oscillator"
                     | "delay"
                     | "limiter"
+                    | "samplePlayer"
                     | "audioOut"
                     | "";
                   if (!type) return;
@@ -46,6 +47,7 @@ export function App() {
                 <option value="oscillator">Oscillator</option>
                 <option value="delay">Delay</option>
                 <option value="limiter">Limiter</option>
+                <option value="samplePlayer">Sample Player</option>
                 <option value="audioOut">Output</option>
               </select>
               <button
