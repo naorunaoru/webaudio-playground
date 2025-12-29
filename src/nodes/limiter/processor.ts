@@ -34,6 +34,14 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
+function nowMs(): number {
+  const p = (globalThis as any).performance;
+  if (p && typeof p.now === "function") return p.now();
+  const d = (globalThis as any).Date;
+  if (d && typeof d.now === "function") return d.now();
+  return 0;
+}
+
 class LimiterProcessor extends AudioWorkletProcessor {
   private ceilingDb = -0.3;
   private releaseMs = 120;
@@ -41,6 +49,10 @@ class LimiterProcessor extends AudioWorkletProcessor {
 
   private bypass = false;
   private stereoLink = true;
+
+  private cpuEma = 0;
+  private cpuEmaInitialized = false;
+  private cpuPostCountdown = 0;
 
   private wasm: WasmExports | null = null;
   private wasmLimiterPtr = 0;
@@ -192,6 +204,7 @@ class LimiterProcessor extends AudioWorkletProcessor {
     outputs: Float32Array[][],
     _parameters: Record<string, Float32Array>
   ): boolean {
+    const t0 = nowMs();
     const input = inputs[0];
     const output = outputs[0];
     if (!output) return true;
@@ -201,6 +214,7 @@ class LimiterProcessor extends AudioWorkletProcessor {
 
     if (!input || input.length === 0 || frames === 0) {
       for (let c = 0; c < outputChannels; c++) output[c]!.fill(0);
+      this.noteCpu(t0, frames);
       return true;
     }
 
@@ -209,6 +223,7 @@ class LimiterProcessor extends AudioWorkletProcessor {
 
     if (this.bypass) {
       for (let c = 0; c < channels; c++) output[c]!.set(input[c]!);
+      this.noteCpu(t0, frames);
       return true;
     }
 
@@ -217,7 +232,32 @@ class LimiterProcessor extends AudioWorkletProcessor {
       // Until WASM is ready (or if it failed to init), pass through.
       for (let c = 0; c < channels; c++) output[c]!.set(input[c]!);
     }
+    this.noteCpu(t0, frames);
     return true;
+  }
+
+  private noteCpu(t0: number, frames: number) {
+    const t1 = nowMs();
+    const elapsedMs = Math.max(0, t1 - t0);
+    const bufferMs = frames > 0 ? (frames / sampleRate) * 1000 : 0;
+    const load = bufferMs > 0 ? elapsedMs / bufferMs : 0;
+
+    const alpha = 0.12;
+    if (!this.cpuEmaInitialized) {
+      this.cpuEma = load;
+      this.cpuEmaInitialized = true;
+    } else {
+      this.cpuEma = this.cpuEma + alpha * (load - this.cpuEma);
+    }
+
+    // Post at ~10Hz (128-frame quanta => ~375Hz at 48k).
+    if (this.cpuPostCountdown-- <= 0) {
+      this.cpuPostCountdown = 36;
+      this.port.postMessage({
+        type: "cpu",
+        load: this.cpuEma,
+      });
+    }
   }
 }
 

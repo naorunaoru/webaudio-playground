@@ -4,7 +4,7 @@ import type { GraphNode, MidiEvent, NodeId, PortSpec } from "../graph/types";
 export type NodeUiProps<TNode extends GraphNode> = Readonly<{
   node: TNode;
   onPatchNode: (nodeId: NodeId, patch: Partial<TNode["state"]>) => void;
-  onEmitMidi?: (nodeId: NodeId, event: MidiEvent) => void;
+  onEmitMidi?: (nodeId: NodeId, event: MidiEvent) => void | Promise<void>;
   debug?: unknown;
 }>;
 

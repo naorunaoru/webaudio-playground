@@ -79,6 +79,7 @@ function createLimiterRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInst
     module: "loading" as "loading" | "ready" | "error",
     worklet: "none" as "none" | "ready" | "error",
     wasm: "loading" as "loading" | "ready" | "missing" | "error",
+    cpuLoad: 0,
   };
 
   const params = {
@@ -118,10 +119,16 @@ function createLimiterRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInst
     debug.worklet = "ready";
     node.port.onmessage = (event: MessageEvent<any>) => {
       const data = event.data as any;
-      if (!data || data.type !== "status") return;
-      if (data.worklet === "ready") debug.worklet = "ready";
-      if (data.worklet === "error") debug.worklet = "error";
-      if (typeof data.wasm === "string") debug.wasm = data.wasm;
+      if (!data) return;
+      if (data.type === "status") {
+        if (data.worklet === "ready") debug.worklet = "ready";
+        if (data.worklet === "error") debug.worklet = "error";
+        if (typeof data.wasm === "string") debug.wasm = data.wasm;
+        return;
+      }
+      if (data.type === "cpu" && typeof data.load === "number") {
+        debug.cpuLoad = Math.max(0, data.load);
+      }
     };
   };
 
@@ -271,7 +278,7 @@ function createLimiterRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInst
       worklet = null;
     },
     getLevel: () => rmsFromAnalyser(meter, meterBuffer),
-    getDebug: () => ({ ...debug }),
+    getDebug: () => debug,
   };
 }
 

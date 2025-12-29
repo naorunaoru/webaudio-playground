@@ -8,11 +8,11 @@ function defaultState(): CcSourceNode["state"] {
 }
 
 const CcSourceUi: React.FC<NodeUiProps<CcSourceNode>> = ({ node, onPatchNode, onEmitMidi }) => {
-  const send = (patch: Partial<CcSourceNode["state"]>) => {
+  const send = async (patch: Partial<CcSourceNode["state"]>) => {
     const next = { ...node.state, ...patch };
     onPatchNode(node.id, patch);
     const atMs = performance.now();
-    onEmitMidi?.(node.id, {
+    await onEmitMidi?.(node.id, {
       type: "cc",
       controller: Math.max(0, Math.min(127, Math.floor(next.controller))),
       value: Math.max(0, Math.min(127, Math.floor(next.value))),
@@ -32,7 +32,7 @@ const CcSourceUi: React.FC<NodeUiProps<CcSourceNode>> = ({ node, onPatchNode, on
             min={0}
             max={127}
             value={node.state.controller}
-            onChange={(e) => send({ controller: Number(e.target.value) })}
+            onChange={(e) => void send({ controller: Number(e.target.value) })}
           />
         </label>
         <label style={{ display: "grid", gap: 6 }}>
@@ -42,7 +42,7 @@ const CcSourceUi: React.FC<NodeUiProps<CcSourceNode>> = ({ node, onPatchNode, on
             min={1}
             max={16}
             value={node.state.channel}
-            onChange={(e) => send({ channel: Number(e.target.value) })}
+            onChange={(e) => void send({ channel: Number(e.target.value) })}
           />
         </label>
       </div>
@@ -53,7 +53,9 @@ const CcSourceUi: React.FC<NodeUiProps<CcSourceNode>> = ({ node, onPatchNode, on
           min={0}
           max={127}
           value={node.state.value}
-          onInput={(e) => send({ value: Number((e.target as HTMLInputElement).value) })}
+          onInput={(e) =>
+            void send({ value: Number((e.target as HTMLInputElement).value) })
+          }
         />
       </label>
     </div>

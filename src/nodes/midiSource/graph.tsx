@@ -32,7 +32,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
             background: isHeld ? "rgba(180, 142, 173, 0.18)" : undefined,
             borderColor: isHeld ? "rgba(180, 142, 173, 0.55)" : undefined,
           }}
-          onPointerDown={(e) => {
+          onPointerDown={async (e) => {
             if (activePointerIdRef.current != null) return;
             activePointerIdRef.current = e.pointerId;
             (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
@@ -40,7 +40,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
 
             const atMs = performance.now();
             onPatchNode(node.id, { isEmitting: true, lastTriggeredAtMs: atMs });
-            onEmitMidi?.(node.id, {
+            await onEmitMidi?.(node.id, {
               type: "noteOn",
               note: node.state.note,
               velocity: node.state.velocity,
@@ -48,7 +48,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
               atMs,
             });
           }}
-          onPointerUp={(e) => {
+          onPointerUp={async (e) => {
             if (activePointerIdRef.current !== e.pointerId) return;
             activePointerIdRef.current = null;
             (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
@@ -56,7 +56,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
 
             const atMs = performance.now();
             onPatchNode(node.id, { isEmitting: false });
-            onEmitMidi?.(node.id, {
+            await onEmitMidi?.(node.id, {
               type: "noteOff",
               note: node.state.note,
               channel: node.state.channel,
@@ -69,7 +69,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
             setIsHeld(false);
             const atMs = performance.now();
             onPatchNode(node.id, { isEmitting: false });
-            onEmitMidi?.(node.id, {
+            void onEmitMidi?.(node.id, {
               type: "noteOff",
               note: node.state.note,
               channel: node.state.channel,
@@ -82,7 +82,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
             setIsHeld(false);
             const atMs = performance.now();
             onPatchNode(node.id, { isEmitting: false });
-            onEmitMidi?.(node.id, {
+            void onEmitMidi?.(node.id, {
               type: "noteOff",
               note: node.state.note,
               channel: node.state.channel,

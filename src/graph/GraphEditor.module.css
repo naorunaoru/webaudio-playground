@@ -1,8 +1,16 @@
 .root {
   position: relative;
-  height: 560px;
+  height: 100vh;
+  width: 100vw;
   user-select: none;
   -webkit-user-select: none;
+  overflow: auto;
+}
+
+.world {
+  position: relative;
+  min-width: 2400px;
+  min-height: 1600px;
 }
 
 .canvas {
@@ -11,16 +19,148 @@
   width: 100%;
   height: 100%;
   display: block;
-  z-index: 0;
+  z-index: 4;
   user-select: none;
   -webkit-user-select: none;
+  pointer-events: none;
+}
+
+.nodesLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.nodesLayerInner {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.node {
+  position: absolute;
+  border-radius: 12px;
+  background: rgba(10, 12, 18, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  pointer-events: auto;
+  overflow: visible;
+  width: max-content;
+  max-width: 420px;
+  min-width: 220px;
+}
+
+.nodeSelected {
+  border-color: rgba(236, 239, 244, 0.35);
+  box-shadow: 0 0 0 2px rgba(236, 239, 244, 0.2);
+}
+
+.nodeHeader {
+  height: 28px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px 0 12px;
+  cursor: grab;
+}
+
+.nodeTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1;
+}
+
+.nodeBody {
+  position: relative;
+  padding: 12px;
+}
+
+.portRow {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.portDot {
+  position: absolute;
+  top: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.portLabel {
+  position: absolute;
+  top: 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.portDot:hover + .portLabel {
+  opacity: 1;
+}
+
+.portIn .portDot {
+  left: 0;
+  cursor: default;
+}
+
+.portIn .portLabel {
+  left: -10px;
+  transform: translate(-100%, -50%);
+  text-align: right;
+}
+
+.portOut .portDot {
+  left: 100%;
+  cursor: crosshair;
+}
+
+.portOut .portLabel {
+  left: calc(100% + 10px);
+  text-align: left;
+}
+
+.nodeIndicators {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.indicatorDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  opacity: 0;
+}
+
+.indicatorDotVisible {
+  opacity: 0.9;
 }
 
 .hud {
-  position: absolute;
-  left: 12px;
-  top: 10px;
-  z-index: 2;
+  position: fixed;
+  left: 14px;
+  right: 14px;
+  bottom: 12px;
+  z-index: 20;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -31,6 +171,7 @@
   backdrop-filter: blur(6px);
   user-select: none;
   -webkit-user-select: none;
+  flex-wrap: wrap;
 }
 
 .hint {
@@ -38,16 +179,11 @@
   opacity: 0.75;
 }
 
-:global(svg text) {
-  user-select: none;
-  -webkit-user-select: none;
-}
-
 .uiLayer {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 1;
+  z-index: 3;
 }
 
 .nodeUi {
