@@ -143,7 +143,7 @@ export class AudioEngine {
 
     const disconnected = new Set<string>();
     for (const conn of graph.connections) {
-      if (conn.kind !== "audio") continue;
+      if (conn.kind !== "audio" && conn.kind !== "automation") continue;
       const from = this.audioNodes.get(conn.from.nodeId);
       if (!from?.getAudioOutput) continue;
       const key = `${conn.from.nodeId}:${conn.from.portId}`;
@@ -153,13 +153,13 @@ export class AudioEngine {
     }
 
     for (const conn of graph.connections) {
-      if (conn.kind !== "audio") continue;
+      if (conn.kind !== "audio" && conn.kind !== "automation") continue;
       const from = this.audioNodes.get(conn.from.nodeId);
       const to = this.audioNodes.get(conn.to.nodeId);
       if (!from || !to) continue;
       const out = from.getAudioOutput?.(conn.from.portId);
       const input = to.getAudioInput?.(conn.to.portId);
-      if (out && input) out.connect(input);
+      if (out && input) out.connect(input as any);
     }
   }
 

@@ -66,15 +66,31 @@ function loadGraphFromStorage(): GraphState | null {
 }
 
 function normalizeGraph(graph: GraphState): GraphState {
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) => {
-      const def = getNodeDef(n.type as any) as any;
-      if (!def.normalizeState) return n;
-      return { ...n, state: def.normalizeState((n as any).state) };
-    }),
-    connections: graph.connections ?? [],
-  };
+  const nodes = graph.nodes.map((n) => {
+    const def = getNodeDef(n.type as any) as any;
+    if (!def.normalizeState) return n;
+    return { ...n, state: def.normalizeState((n as any).state) };
+  });
+
+  const nodeById = new Map(nodes.map((n) => [n.id, n] as const));
+  const connections = (graph.connections ?? []).filter((c) => {
+    const fromNode = nodeById.get(c.from.nodeId);
+    const toNode = nodeById.get(c.to.nodeId);
+    if (!fromNode || !toNode) return false;
+    const fromPort = getNodeDef(fromNode.type)
+      .ports(fromNode as any)
+      .find((p) => p.id === c.from.portId);
+    const toPort = getNodeDef(toNode.type)
+      .ports(toNode as any)
+      .find((p) => p.id === c.to.portId);
+    if (!fromPort || !toPort) return false;
+    if (fromPort.direction !== "out" || toPort.direction !== "in") return false;
+    if (fromPort.kind !== toPort.kind) return false;
+    if (c.kind !== fromPort.kind) return false;
+    return true;
+  });
+
+  return { ...graph, nodes, connections };
 }
 
 function initialGraph(): GraphState {
@@ -102,14 +118,59 @@ function initialGraph(): GraphState {
         state: getNodeDef("oscillator").defaultState(),
       } as any,
       {
+        id: "n_env",
+        type: "envelope",
+        x: 340,
+        y: 290,
+        state: getNodeDef("envelope").defaultState(),
+      } as any,
+      {
+        id: "n_gain",
+        type: "gain",
+        x: 520,
+        y: 150,
+        state: getNodeDef("gain").defaultState(),
+      } as any,
+      {
         id: "n_out",
         type: "audioOut",
-        x: 660,
+        x: 720,
         y: 150,
         state: getNodeDef("audioOut").defaultState(),
       } as any,
     ],
-    connections: [],
+    connections: [
+      {
+        id: "c_midi_osc",
+        kind: "midi",
+        from: { nodeId: "n_midi", portId: "midi_out" },
+        to: { nodeId: "n_osc", portId: "midi_in" },
+      },
+      {
+        id: "c_midi_env",
+        kind: "midi",
+        from: { nodeId: "n_midi", portId: "midi_out" },
+        to: { nodeId: "n_env", portId: "midi_in" },
+      },
+      {
+        id: "c_osc_gain",
+        kind: "audio",
+        from: { nodeId: "n_osc", portId: "audio_out" },
+        to: { nodeId: "n_gain", portId: "audio_in" },
+      },
+      {
+        id: "c_env_gain",
+        kind: "automation",
+        from: { nodeId: "n_env", portId: "env_out" },
+        to: { nodeId: "n_gain", portId: "gain_in" },
+      },
+      {
+        id: "c_gain_out",
+        kind: "audio",
+        from: { nodeId: "n_gain", portId: "audio_out" },
+        to: { nodeId: "n_out", portId: "audio_in" },
+      },
+    ],
   };
 }
 
@@ -206,14 +267,27 @@ function routeMidi(
     }
 
     if (node.type === "oscillator" && event.type === "noteOn") {
-      const audioOut = graph.connections.filter(
-        (c) => c.kind === "audio" && c.from.nodeId === node.id
-      );
-      for (const conn of audioOut) {
-        nodePatches.set(conn.to.nodeId, {
-          ...(nodePatches.get(conn.to.nodeId) ?? {}),
-          lastAudioAtMs: event.atMs,
-        });
+      const visited = new Set<NodeId>();
+      const queue: NodeId[] = [node.id];
+      while (queue.length > 0) {
+        const currentNodeId = queue.shift()!;
+        if (visited.has(currentNodeId)) continue;
+        visited.add(currentNodeId);
+
+        const outgoing = graph.connections.filter(
+          (c) => c.kind === "audio" && c.from.nodeId === currentNodeId
+        );
+        for (const conn of outgoing) {
+          const toNode = findNode(graph, conn.to.nodeId);
+          if (toNode?.type === "audioOut") {
+            nodePatches.set(conn.to.nodeId, {
+              ...(nodePatches.get(conn.to.nodeId) ?? {}),
+              lastAudioAtMs: event.atMs,
+            });
+          } else {
+            queue.push(conn.to.nodeId);
+          }
+        }
       }
     }
 

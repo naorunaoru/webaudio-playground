@@ -3,6 +3,8 @@ import type { NodeModule } from "../types/nodeModule";
 import { midiSourceNode } from "./midiSource";
 import { ccSourceNode } from "./ccSource";
 import { oscillatorNode } from "./oscillator";
+import { envelopeNode } from "./envelope";
+import { gainNode } from "./gain";
 import { delayNode } from "./delay";
 import { reverbNode } from "./reverb";
 import { limiterNode } from "./limiter";
@@ -13,6 +15,8 @@ export const NODE_MODULES = {
   midiSource: midiSourceNode,
   ccSource: ccSourceNode,
   oscillator: oscillatorNode,
+  envelope: envelopeNode,
+  gain: gainNode,
   delay: delayNode,
   reverb: reverbNode,
   limiter: limiterNode,

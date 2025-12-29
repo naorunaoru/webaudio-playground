@@ -96,6 +96,8 @@ export function App() {
                 | "midiSource"
                 | "ccSource"
                 | "oscillator"
+                | "envelope"
+                | "gain"
                 | "delay"
                 | "reverb"
                 | "limiter"
@@ -112,6 +114,8 @@ export function App() {
             <option value="midiSource">MIDI Source</option>
             <option value="ccSource">CC Source</option>
             <option value="oscillator">Oscillator</option>
+            <option value="envelope">Envelope</option>
+            <option value="gain">Gain</option>
             <option value="delay">Delay</option>
             <option value="reverb">Reverb</option>
             <option value="limiter">Limiter</option>

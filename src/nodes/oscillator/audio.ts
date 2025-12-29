@@ -20,95 +20,49 @@ function rmsFromAnalyser(analyser: AnalyserNode, buffer: Float32Array<ArrayBuffe
   return Math.sqrt(sum / buffer.length);
 }
 
-type OscillatorRuntimeState = OscillatorGraphNode["state"];
-
 function createOscillatorRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstance<OscillatorGraphNode> {
+  const output = ctx.createGain();
+  output.gain.value = 0.2;
+
   const osc = ctx.createOscillator();
-  const amp = ctx.createGain();
-  amp.gain.value = 0;
+  const waveSelect = ctx.createGain();
+  waveSelect.gain.value = 1;
+
+  const noiseSelect = ctx.createGain();
+  noiseSelect.gain.value = 0;
 
   const meter = ctx.createAnalyser();
   meter.fftSize = 256;
   meter.smoothingTimeConstant = 0.6;
   const meterBuffer = new Float32Array(meter.fftSize) as Float32Array<ArrayBufferLike>;
 
-  osc.connect(amp);
-  amp.connect(meter);
+  const noiseBuffer = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * 1.0)), ctx.sampleRate);
+  const noise = noiseBuffer.getChannelData(0);
+  for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
+  const noiseSource = ctx.createBufferSource();
+  noiseSource.buffer = noiseBuffer;
+  noiseSource.loop = true;
+
+  osc.connect(waveSelect);
+  waveSelect.connect(output);
+
+  noiseSource.connect(noiseSelect);
+  noiseSelect.connect(output);
+
+  output.connect(meter);
+
   osc.start();
-
-  let currentNote: number | null = null;
-
-  function applyEnvelopeNoteOn(
-    event: Extract<MidiEvent, { type: "noteOn" }>,
-    state: OscillatorRuntimeState,
-  ) {
-    const now = ctx.currentTime;
-    const epsilon = 0.0001;
-
-    const hz = midiToFreqHz(event.note, A4_HZ);
-    osc.detune.setValueAtTime(state.detuneCents, now);
-    osc.frequency.setValueAtTime(hz, now);
-
-    const peak = Math.min(1, Math.max(0, event.velocity / 127)) * 0.2;
-    const env = state.env;
-    const a = Math.max(0, env.attackMs) / 1000;
-    const d = Math.max(0, env.decayMs) / 1000;
-    const s = Math.max(0, Math.min(1, env.sustain));
-    const sustainLevel = Math.max(epsilon, peak * s);
-
-    const g = amp.gain;
-    g.cancelScheduledValues(now);
-    g.setValueAtTime(Math.max(epsilon, g.value), now);
-
-    const tA = now + a;
-    if (a > 0) {
-      if (env.attackCurve === "exp") g.exponentialRampToValueAtTime(Math.max(epsilon, peak), tA);
-      else g.linearRampToValueAtTime(peak, tA);
-    } else {
-      g.setValueAtTime(peak, now);
-    }
-
-    const tD = tA + d;
-    if (d > 0) {
-      if (env.decayCurve === "exp") g.exponentialRampToValueAtTime(sustainLevel, tD);
-      else g.linearRampToValueAtTime(sustainLevel, tD);
-    } else {
-      g.setValueAtTime(sustainLevel, tA);
-    }
-
-    currentNote = event.note;
-  }
-
-  function applyEnvelopeNoteOff(
-    event: Extract<MidiEvent, { type: "noteOff" }>,
-    state: OscillatorRuntimeState,
-  ) {
-    if (currentNote != null && currentNote !== event.note) return;
-    const now = ctx.currentTime;
-    const epsilon = 0.0001;
-
-    const env = state.env;
-    const r = Math.max(0, env.releaseMs) / 1000;
-    const g = amp.gain;
-    g.cancelScheduledValues(now);
-    g.setValueAtTime(Math.max(epsilon, g.value), now);
-    if (r > 0) {
-      if (env.releaseCurve === "exp") {
-        g.exponentialRampToValueAtTime(epsilon, now + r);
-        g.setValueAtTime(0, now + r);
-      } else {
-        g.linearRampToValueAtTime(0, now + r);
-      }
-    } else {
-      g.setValueAtTime(0, now);
-    }
-    currentNote = null;
-  }
+  noiseSource.start();
 
   return {
     type: "oscillator",
     updateState: (state) => {
+      const now = ctx.currentTime;
       osc.type = state.waveform;
+      const targetWave = state.source === "wave" ? 1 : 0;
+      const targetNoise = state.source === "noise" ? 1 : 0;
+      waveSelect.gain.setTargetAtTime(targetWave, now, 0.01);
+      noiseSelect.gain.setTargetAtTime(targetNoise, now, 0.01);
     },
     getAudioOutput: (portId) => {
       if (portId === "audio_out") return meter;
@@ -116,15 +70,27 @@ function createOscillatorRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeI
     },
     handleMidi: (event, portId, state) => {
       if (portId && portId !== "midi_in") return;
-      if (event.type === "noteOn") applyEnvelopeNoteOn(event, state);
-      if (event.type === "noteOff") applyEnvelopeNoteOff(event, state);
+      const now = ctx.currentTime;
+
+      if (event.type === "noteOn") {
+        const hz = midiToFreqHz(event.note, A4_HZ);
+        osc.frequency.setValueAtTime(hz, now);
+      }
     },
     onRemove: () => {
       meter.disconnect();
-      amp.disconnect();
+      output.disconnect();
+      noiseSelect.disconnect();
+      waveSelect.disconnect();
+      noiseSource.disconnect();
       osc.disconnect();
       try {
         osc.stop();
+      } catch {
+        // ignore
+      }
+      try {
+        noiseSource.stop();
       } catch {
         // ignore
       }

@@ -3,7 +3,7 @@ import type { GraphNode, MidiEvent, NodeId } from "../graph/types";
 export type AudioNodeInstance<TNode extends GraphNode = GraphNode> = {
   readonly type: TNode["type"];
   updateState: (state: TNode["state"]) => void;
-  getAudioInput?: (portId: string) => AudioNode | null;
+  getAudioInput?: (portId: string) => AudioNode | AudioParam | null;
   getAudioOutput?: (portId: string) => AudioNode | null;
   handleMidi?: (event: MidiEvent, portId: string | null, state: TNode["state"]) => void;
   onRemove?: () => void;
