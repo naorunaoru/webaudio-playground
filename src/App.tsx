@@ -98,6 +98,7 @@ export function App() {
                 | "oscillator"
                 | "envelope"
                 | "gain"
+                | "filter"
                 | "delay"
                 | "reverb"
                 | "limiter"
@@ -116,6 +117,7 @@ export function App() {
             <option value="oscillator">Oscillator</option>
             <option value="envelope">Envelope</option>
             <option value="gain">Gain</option>
+            <option value="filter">Filter</option>
             <option value="delay">Delay</option>
             <option value="reverb">Reverb</option>
             <option value="limiter">Limiter</option>

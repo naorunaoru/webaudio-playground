@@ -125,16 +125,23 @@ function initialGraph(): GraphState {
         state: getNodeDef("envelope").defaultState(),
       } as any,
       {
+        id: "n_filter",
+        type: "filter",
+        x: 520,
+        y: 150,
+        state: getNodeDef("filter").defaultState(),
+      } as any,
+      {
         id: "n_gain",
         type: "gain",
-        x: 520,
+        x: 700,
         y: 150,
         state: getNodeDef("gain").defaultState(),
       } as any,
       {
         id: "n_out",
         type: "audioOut",
-        x: 720,
+        x: 880,
         y: 150,
         state: getNodeDef("audioOut").defaultState(),
       } as any,
@@ -156,6 +163,12 @@ function initialGraph(): GraphState {
         id: "c_osc_gain",
         kind: "audio",
         from: { nodeId: "n_osc", portId: "audio_out" },
+        to: { nodeId: "n_filter", portId: "audio_in" },
+      },
+      {
+        id: "c_filter_gain",
+        kind: "audio",
+        from: { nodeId: "n_filter", portId: "audio_out" },
         to: { nodeId: "n_gain", portId: "audio_in" },
       },
       {
@@ -163,6 +176,12 @@ function initialGraph(): GraphState {
         kind: "automation",
         from: { nodeId: "n_env", portId: "env_out" },
         to: { nodeId: "n_gain", portId: "gain_in" },
+      },
+      {
+        id: "c_env_filter",
+        kind: "automation",
+        from: { nodeId: "n_env", portId: "env_out" },
+        to: { nodeId: "n_filter", portId: "freq_in" },
       },
       {
         id: "c_gain_out",

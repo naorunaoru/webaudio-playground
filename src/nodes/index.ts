@@ -5,6 +5,7 @@ import { ccSourceNode } from "./ccSource";
 import { oscillatorNode } from "./oscillator";
 import { envelopeNode } from "./envelope";
 import { gainNode } from "./gain";
+import { filterNode } from "./filter";
 import { delayNode } from "./delay";
 import { reverbNode } from "./reverb";
 import { limiterNode } from "./limiter";
@@ -17,6 +18,7 @@ export const NODE_MODULES = {
   oscillator: oscillatorNode,
   envelope: envelopeNode,
   gain: gainNode,
+  filter: filterNode,
   delay: delayNode,
   reverb: reverbNode,
   limiter: limiterNode,
