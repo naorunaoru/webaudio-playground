@@ -3,6 +3,7 @@ import { GraphEditor, type GraphEditorHandle } from "./graph/GraphEditor";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAudioEngine } from "./audio/engine";
 import type { GraphState } from "./graph/types";
+import { exportProject, downloadBlob, importProject, pickFile } from "./project";
 
 function readAudioDspLoad(engineDebug: Record<string, unknown>): number | null {
   let max = 0;
@@ -74,6 +75,41 @@ export function App() {
     }
   }, [audioState]);
 
+  const handleExport = useCallback(async () => {
+    const graph = graphEditorRef.current?.getGraph();
+    if (!graph) return;
+
+    try {
+      const blob = await exportProject(graph);
+      const timestamp = new Date().toISOString().slice(0, 10);
+      downloadBlob(blob, `webaudio-project-${timestamp}.zip`);
+    } catch (err) {
+      console.error("Export failed:", err);
+    }
+  }, []);
+
+  const handleImport = useCallback(async () => {
+    const file = await pickFile(".zip");
+    if (!file) return;
+
+    const result = await importProject(file);
+
+    if (!result.success) {
+      alert(`Import failed: ${result.error}`);
+      return;
+    }
+
+    if (result.warnings.length > 0) {
+      console.warn("Import warnings:", result.warnings);
+    }
+
+    graphEditorRef.current?.setGraph(result.graph);
+  }, []);
+
+  const handleNew = useCallback(() => {
+    graphEditorRef.current?.resetGraph();
+  }, []);
+
   return (
     <div className={styles.shell}>
       <GraphEditor
@@ -124,6 +160,27 @@ export function App() {
             <option value="samplePlayer">Sample Player</option>
             <option value="audioOut">Output</option>
           </select>
+          <button
+            type="button"
+            className={styles.toolbarButton}
+            onClick={handleNew}
+          >
+            New
+          </button>
+          <button
+            type="button"
+            className={styles.toolbarButton}
+            onClick={handleImport}
+          >
+            Import
+          </button>
+          <button
+            type="button"
+            className={styles.toolbarButton}
+            onClick={handleExport}
+          >
+            Export
+          </button>
           <div
             className={styles.toolbarStat}
             title="Approximate audio DSP load from custom AudioWorklet processors (not total system CPU)."

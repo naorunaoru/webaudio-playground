@@ -145,6 +145,8 @@ export type GraphEditorProps = Readonly<{
 export type GraphEditorHandle = Readonly<{
   addNode: (type: GraphNode["type"]) => void;
   getGraph: () => GraphState;
+  setGraph: (graph: GraphState) => void;
+  resetGraph: () => void;
 }>;
 
 export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
@@ -253,6 +255,12 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           setGraph((g) => ({ ...g, nodes: [...g.nodes, node] }));
         },
         getGraph: () => graph,
+        setGraph: (newGraph: GraphState) => {
+          setGraph(newGraph);
+        },
+        resetGraph: () => {
+          setGraph(initialGraph());
+        },
       }),
       [graph]
     );
