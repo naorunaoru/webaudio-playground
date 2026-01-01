@@ -1,6 +1,7 @@
 import type React from "react";
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -8,90 +9,32 @@ import {
   useState,
 } from "react";
 import styles from "./GraphEditor.module.css";
-import { createId } from "./id";
 import { getAudioEngine } from "../audio/engine";
 import type {
   ConnectionEndpoint,
   GraphConnection,
   GraphNode,
   GraphState,
-  MidiEvent,
-  NodeId,
-  PortId,
-  PortKind,
+  Selected,
 } from "./types";
 import { getNodeDef, portKindColor } from "./nodeRegistry";
+import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
+import { bezierPath } from "./coordinates";
+import { canConnect, createNode, portMetaForNode } from "./graphUtils";
+import { loadGraphFromStorage, saveGraphToStorage } from "./graphStorage";
 import {
-  NODE_HEADER_HEIGHT,
-  NODE_PADDING,
-  PORT_ROW_HEIGHT,
-  nodeHeight,
-} from "./layout";
-
-const GRAPH_STORAGE_KEY = "webaudio-playground:graph:v1";
-
-type DragState =
-  | { type: "none" }
-  | {
-      type: "moveNode";
-      nodeId: NodeId;
-      offsetX: number;
-      offsetY: number;
-    }
-  | {
-      type: "connect";
-      from: ConnectionEndpoint;
-      kind: PortKind;
-      toX: number;
-      toY: number;
-    };
-
-type Selected =
-  | { type: "none" }
-  | { type: "node"; nodeId: NodeId }
-  | { type: "connection"; connectionId: string };
-
-function loadGraphFromStorage(): GraphState | null {
-  try {
-    const raw = localStorage.getItem(GRAPH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object") return null;
-    const g = parsed as Partial<GraphState>;
-    if (!Array.isArray(g.nodes) || !Array.isArray(g.connections)) return null;
-    return normalizeGraph(g as GraphState);
-  } catch {
-    return null;
-  }
-}
-
-function normalizeGraph(graph: GraphState): GraphState {
-  const nodes = graph.nodes.map((n) => {
-    const def = getNodeDef(n.type as any) as any;
-    if (!def.normalizeState) return n;
-    return { ...n, state: def.normalizeState((n as any).state) };
-  });
-
-  const nodeById = new Map(nodes.map((n) => [n.id, n] as const));
-  const connections = (graph.connections ?? []).filter((c) => {
-    const fromNode = nodeById.get(c.from.nodeId);
-    const toNode = nodeById.get(c.to.nodeId);
-    if (!fromNode || !toNode) return false;
-    const fromPort = getNodeDef(fromNode.type)
-      .ports(fromNode as any)
-      .find((p) => p.id === c.from.portId);
-    const toPort = getNodeDef(toNode.type)
-      .ports(toNode as any)
-      .find((p) => p.id === c.to.portId);
-    if (!fromPort || !toPort) return false;
-    if (fromPort.direction !== "out" || toPort.direction !== "in") return false;
-    if (fromPort.kind !== toPort.kind) return false;
-    if (c.kind !== fromPort.kind) return false;
-    return true;
-  });
-
-  return { ...graph, nodes, connections };
-}
+  useAudioLevels,
+  useDragInteraction,
+  useMidiDispatch,
+  useNodeWidths,
+} from "./hooks";
+import {
+  DragConnectionPreview,
+  GraphConnectionPath,
+  GraphHUD,
+  GraphNodeCard,
+} from "./components";
+import { createId } from "./id";
 
 function initialGraph(): GraphState {
   return {
@@ -193,205 +136,6 @@ function initialGraph(): GraphState {
   };
 }
 
-function createNode(type: GraphNode["type"], x: number, y: number): GraphNode {
-  const def = getNodeDef(type as any) as any;
-  return { id: createId("n"), type, x, y, state: def.defaultState() };
-}
-
-function portMetaForNode(node: GraphNode) {
-  const def = getNodeDef(node.type);
-  const ports = def.ports(node as any);
-  return ports;
-}
-
-function findNode(graph: GraphState, nodeId: NodeId): GraphNode | undefined {
-  return graph.nodes.find((n) => n.id === nodeId);
-}
-
-function portById(node: GraphNode, portId: PortId) {
-  return portMetaForNode(node).find((p) => p.id === portId);
-}
-
-function connectionKey(
-  kind: PortKind,
-  from: ConnectionEndpoint,
-  to: ConnectionEndpoint
-) {
-  return `${kind}:${from.nodeId}.${from.portId}->${to.nodeId}.${to.portId}`;
-}
-
-function canConnect(
-  graph: GraphState,
-  from: ConnectionEndpoint,
-  to: ConnectionEndpoint
-): { ok: true; kind: PortKind } | { ok: false; reason: string } {
-  if (from.nodeId === to.nodeId) return { ok: false, reason: "same node" };
-  const fromNode = findNode(graph, from.nodeId);
-  const toNode = findNode(graph, to.nodeId);
-  if (!fromNode || !toNode) return { ok: false, reason: "missing node" };
-
-  const fromPort = portById(fromNode, from.portId);
-  const toPort = portById(toNode, to.portId);
-  if (!fromPort || !toPort) return { ok: false, reason: "missing port" };
-  if (fromPort.direction !== "out" || toPort.direction !== "in") {
-    return { ok: false, reason: "direction mismatch" };
-  }
-  if (fromPort.kind !== toPort.kind)
-    return { ok: false, reason: "kind mismatch" };
-
-  const key = connectionKey(fromPort.kind, from, to);
-  const exists = graph.connections.some(
-    (c) => connectionKey(c.kind, c.from, c.to) === key
-  );
-  if (exists) return { ok: false, reason: "already connected" };
-  return { ok: true, kind: fromPort.kind };
-}
-
-type MidiDelivery = { nodeId: NodeId; portId: PortId | null };
-
-function routeMidi(
-  graph: GraphState,
-  sourceNodeId: NodeId,
-  event: MidiEvent
-): GraphState {
-  const seen = new Set<string>();
-  const queue: MidiDelivery[] = [];
-  const nodePatches = new Map<NodeId, Partial<any>>();
-
-  const edgeKind: PortKind = event.type === "cc" ? "cc" : "midi";
-
-  const starts = graph.connections.filter(
-    (c) => c.kind === edgeKind && c.from.nodeId === sourceNodeId
-  );
-  for (const conn of starts)
-    queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
-
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const key = `${current.nodeId}:${current.portId ?? ""}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const node = findNode(graph, current.nodeId);
-    if (!node) continue;
-
-    const def = getNodeDef(node.type);
-    if (def.onMidi) {
-      const patch = def.onMidi(node as any, event, current.portId);
-      if (patch)
-        nodePatches.set(node.id, {
-          ...(nodePatches.get(node.id) ?? {}),
-          ...patch,
-        });
-    }
-
-    if (node.type === "oscillator" && event.type === "noteOn") {
-      const visited = new Set<NodeId>();
-      const queue: NodeId[] = [node.id];
-      while (queue.length > 0) {
-        const currentNodeId = queue.shift()!;
-        if (visited.has(currentNodeId)) continue;
-        visited.add(currentNodeId);
-
-        const outgoing = graph.connections.filter(
-          (c) => c.kind === "audio" && c.from.nodeId === currentNodeId
-        );
-        for (const conn of outgoing) {
-          const toNode = findNode(graph, conn.to.nodeId);
-          if (toNode?.type === "audioOut") {
-            nodePatches.set(conn.to.nodeId, {
-              ...(nodePatches.get(conn.to.nodeId) ?? {}),
-              lastAudioAtMs: event.atMs,
-            });
-          } else {
-            queue.push(conn.to.nodeId);
-          }
-        }
-      }
-    }
-
-    const outgoing = graph.connections.filter(
-      (c) => c.kind === edgeKind && c.from.nodeId === node.id
-    );
-    for (const conn of outgoing)
-      queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
-  }
-
-  if (nodePatches.size === 0) return graph;
-  return {
-    ...graph,
-    nodes: graph.nodes.map((n) => {
-      const patch = nodePatches.get(n.id);
-      if (!patch) return n;
-      return { ...n, state: { ...n.state, ...patch } } as GraphNode;
-    }),
-  };
-}
-
-function localPointFromPointerEvent(
-  root: HTMLElement,
-  e: React.PointerEvent
-): { x: number; y: number } {
-  const rect = root.getBoundingClientRect();
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-}
-
-function localPointFromClientPoint(
-  root: HTMLElement,
-  clientX: number,
-  clientY: number
-): { x: number; y: number } {
-  const rect = root.getBoundingClientRect();
-  return { x: clientX - rect.left, y: clientY - rect.top };
-}
-
-function viewToWorld(
-  p: { x: number; y: number },
-  scrollX: number,
-  scrollY: number
-) {
-  return { x: p.x + scrollX, y: p.y + scrollY };
-}
-
-function bezierPath(x1: number, y1: number, x2: number, y2: number): string {
-  const dx = Math.max(60, Math.abs(x2 - x1) * 0.5);
-  const c1x = x1 + dx;
-  const c2x = x2 - dx;
-  return `M ${x1} ${y1} C ${c1x} ${y1}, ${c2x} ${y2}, ${x2} ${y2}`;
-}
-
-function shallowEqualNumberRecord(
-  a: Record<string, number>,
-  b: Record<string, number>,
-  eps = 1e-4
-): boolean {
-  if (a === b) return true;
-  const ak = Object.keys(a);
-  const bk = Object.keys(b);
-  if (ak.length !== bk.length) return false;
-  for (const k of ak) {
-    const av = a[k];
-    const bv = b[k];
-    if (bv == null) return false;
-    if (Math.abs((av ?? 0) - (bv ?? 0)) > eps) return false;
-  }
-  return true;
-}
-
-function shallowEqualRecordByValueRef(
-  a: Record<string, unknown>,
-  b: Record<string, unknown>
-): boolean {
-  if (a === b) return true;
-  const ak = Object.keys(a);
-  const bk = Object.keys(b);
-  if (ak.length !== bk.length) return false;
-  for (const k of ak) {
-    if (a[k] !== b[k]) return false;
-  }
-  return true;
-}
-
 export type GraphEditorProps = Readonly<{
   audioState: AudioContextState | "off";
   onGraphChange?: (graph: GraphState) => void;
@@ -409,87 +153,63 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     ref
   ) {
     const rootRef = useRef<HTMLDivElement | null>(null);
-    const worldRef = useRef<HTMLDivElement | null>(null);
+    const scrollRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+
     const [graph, setGraph] = useState<GraphState>(
       () => loadGraphFromStorage() ?? initialGraph()
     );
-    const [drag, setDrag] = useState<DragState>({ type: "none" });
     const [selected, setSelected] = useState<Selected>({ type: "none" });
     const [status, setStatus] = useState<string | null>(null);
-    const [levels, setLevels] = useState<Record<string, number>>({});
-    const [debug, setDebug] = useState<Record<string, unknown>>({});
-    const dragRef = useRef<DragState>({ type: "none" });
-    const scrollRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-    const nodeElsRef = useRef(new Map<NodeId, HTMLElement>());
-    const resizeObserverRef = useRef<ResizeObserver | null>(null);
-    const [nodeWidths, setNodeWidths] = useState<Record<string, number>>({});
-    const pendingMidiDispatchQueueRef = useRef<
-      Array<{
-        graph: GraphState;
-        nodeId: NodeId;
-        event: MidiEvent;
-        resolve: () => void;
-        reject: (err: unknown) => void;
-      }>
-    >([]);
-    const drainingMidiDispatchQueueRef = useRef(false);
 
-    useEffect(() => {
-      dragRef.current = drag;
-    }, [drag]);
+    const { nodeWidths, registerNodeEl } = useNodeWidths();
+    const { levels, debug } = useAudioLevels(audioState);
+    const { emitMidi } = useMidiDispatch({
+      graph,
+      setGraph,
+      onEnsureAudioRunning,
+    });
 
-    useEffect(() => {
-      const queue = pendingMidiDispatchQueueRef.current;
-      if (queue.length === 0) return;
-      if (drainingMidiDispatchQueueRef.current) return;
-      drainingMidiDispatchQueueRef.current = true;
+    const handleMoveNode = useCallback(
+      (nodeId: string, x: number, y: number) => {
+        setGraph((g) => ({
+          ...g,
+          nodes: g.nodes.map((n) =>
+            n.id === nodeId ? ({ ...n, x, y } as GraphNode) : n
+          ),
+        }));
+      },
+      []
+    );
 
-      void (async () => {
-        try {
-          while (queue.length > 0) {
-            const item = queue.shift()!;
-            try {
-              await onEnsureAudioRunning?.(item.graph);
-              getAudioEngine().dispatchMidi(
-                item.graph,
-                item.nodeId,
-                item.event
-              );
-              item.resolve();
-            } catch (err) {
-              item.reject(err);
-            }
+    const handleConnect = useCallback(
+      (from: ConnectionEndpoint, to: ConnectionEndpoint) => {
+        setGraph((g) => {
+          const res = canConnect(g, from, to);
+          if (!res.ok) {
+            setStatus(`Cannot connect (${res.reason})`);
+            return g;
           }
-        } finally {
-          drainingMidiDispatchQueueRef.current = false;
-        }
-      })();
-    }, [graph, onEnsureAudioRunning]);
-
-    useEffect(() => {
-      const ro = new ResizeObserver((entries) => {
-        setNodeWidths((prev) => {
-          let next: Record<string, number> | null = null;
-          for (const entry of entries) {
-            const el = entry.target as HTMLElement;
-            const nodeId = el.getAttribute("data-node-id");
-            if (!nodeId) continue;
-            const w = Math.max(0, Math.round(entry.contentRect.width));
-            if (prev[nodeId] === w) continue;
-            next ??= { ...prev };
-            next[nodeId] = w;
-          }
-          return next ?? prev;
+          const conn: GraphConnection = {
+            id: createId("c"),
+            kind: res.kind,
+            from,
+            to,
+          };
+          setStatus(`Connected ${res.kind}`);
+          return { ...g, connections: [...g.connections, conn] };
         });
-      });
-      resizeObserverRef.current = ro;
-      for (const el of nodeElsRef.current.values()) ro.observe(el);
-      return () => {
-        ro.disconnect();
-        resizeObserverRef.current = null;
-      };
-    }, []);
+      },
+      []
+    );
 
+    const { drag, setDrag } = useDragInteraction({
+      rootRef,
+      scrollRef,
+      onMoveNode: handleMoveNode,
+      onConnect: handleConnect,
+    });
+
+    // Scroll tracking
     useEffect(() => {
       const root = rootRef.current;
       if (!root) return;
@@ -498,26 +218,22 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         scrollRef.current = { x: root.scrollLeft, y: root.scrollTop };
       };
 
-      // Initialize once mounted.
       onScroll();
       root.addEventListener("scroll", onScroll, { passive: true });
-      return () => {
-        root.removeEventListener("scroll", onScroll);
-      };
+      return () => root.removeEventListener("scroll", onScroll);
     }, []);
 
+    // Notify parent of graph changes
     useEffect(() => {
       onGraphChange?.(graph);
     }, [graph, onGraphChange]);
 
+    // Persist to localStorage
     useEffect(() => {
-      try {
-        localStorage.setItem(GRAPH_STORAGE_KEY, JSON.stringify(graph));
-      } catch {
-        // ignore
-      }
+      saveGraphToStorage(graph);
     }, [graph]);
 
+    // Imperative handle for parent
     useImperativeHandle(
       ref,
       () => ({
@@ -541,37 +257,20 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       [graph]
     );
 
+    // Auto-clear status
     useEffect(() => {
       if (!status) return;
       const t = window.setTimeout(() => setStatus(null), 2000);
       return () => window.clearTimeout(t);
     }, [status]);
 
+    // Sync graph with audio engine
     useEffect(() => {
       if (audioState === "off") return;
       getAudioEngine().syncGraph(graph);
     }, [graph, audioState]);
 
-    useEffect(() => {
-      if (audioState === "running") {
-        const interval = window.setInterval(() => {
-          const engine = getAudioEngine();
-          const nextLevels = engine.getLevels();
-          const nextDebug = engine.getDebug();
-          setLevels((prev) =>
-            shallowEqualNumberRecord(prev, nextLevels) ? prev : nextLevels
-          );
-          setDebug((prev) =>
-            shallowEqualRecordByValueRef(prev, nextDebug) ? prev : nextDebug
-          );
-        }, 100);
-        return () => window.clearInterval(interval);
-      } else {
-        setLevels({});
-        setDebug({});
-      }
-    }, [audioState]);
-
+    // Build render cache
     const renderCache = useMemo(() => {
       const nodes = graph.nodes.map((node) => {
         const def = getNodeDef(node.type);
@@ -589,7 +288,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       const portCenter = (
         node: GraphNode,
         port: { direction: "in" | "out" },
-        portIndex: number
+        portIdx: number
       ) => {
         const width = nodeWidths[node.id] ?? 240;
         let x = port.direction === "in" ? node.x : node.x + width;
@@ -597,7 +296,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         let y =
           node.y +
           NODE_HEADER_HEIGHT +
-          portIndex * PORT_ROW_HEIGHT +
+          portIdx * PORT_ROW_HEIGHT +
           PORT_ROW_HEIGHT / 2;
         y += 1;
         return { x, y };
@@ -642,7 +341,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       };
     }, [graph.nodes, nodeWidths]);
 
-    function patchNode(nodeId: NodeId, patch: Partial<any>) {
+    const patchNode = useCallback((nodeId: string, patch: Partial<any>) => {
       setGraph((g) => ({
         ...g,
         nodes: g.nodes.map((n) =>
@@ -651,230 +350,89 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
             : n
         ),
       }));
-    }
+    }, []);
 
-    useEffect(() => {
-      if (drag.type === "none") return;
-
-      const onPointerMove = (e: PointerEvent) => {
-        const root = rootRef.current;
-        if (!root) return;
-
-        const currentDrag = dragRef.current;
-        const currentScroll = scrollRef.current;
-
-        const p = localPointFromClientPoint(root, e.clientX, e.clientY);
-        const gp = viewToWorld(p, currentScroll.x, currentScroll.y);
-
-        if (currentDrag.type === "moveNode") {
-          setGraph((g) => ({
-            ...g,
-            nodes: g.nodes.map((n) =>
-              n.id === currentDrag.nodeId
-                ? ({
-                    ...n,
-                    x: gp.x - currentDrag.offsetX,
-                    y: gp.y - currentDrag.offsetY,
-                  } as GraphNode)
-                : n
-            ),
-          }));
-          return;
-        }
-
-        if (currentDrag.type === "connect") {
-          setDrag((prev) =>
-            prev.type === "connect" ? { ...prev, toX: gp.x, toY: gp.y } : prev
-          );
-        }
-      };
-
-      const onPointerUp = (e: PointerEvent) => {
-        const currentDrag = dragRef.current;
-        if (currentDrag.type === "connect") {
-          const target = document.elementFromPoint(
-            e.clientX,
-            e.clientY
-          ) as Element | null;
-          const portEl = target?.closest?.(
-            '[data-port="1"]'
-          ) as HTMLElement | null;
-          if (portEl) {
-            const toNodeId = portEl.getAttribute("data-node-id");
-            const toPortId = portEl.getAttribute("data-port-id");
-            const toDirection = portEl.getAttribute("data-port-direction");
-            if (toNodeId && toPortId && toDirection === "in") {
-              createConnection(currentDrag.from, {
-                nodeId: toNodeId,
-                portId: toPortId,
-              });
-            }
+    const handleKeyDown = useCallback(
+      (e: React.KeyboardEvent) => {
+        if (e.key === "Backspace" || e.key === "Delete") {
+          if (selected.type === "node") {
+            const id = selected.nodeId;
+            setGraph((g) => ({
+              ...g,
+              nodes: g.nodes.filter((n) => n.id !== id),
+              connections: g.connections.filter(
+                (c) => c.from.nodeId !== id && c.to.nodeId !== id
+              ),
+            }));
+            setSelected({ type: "none" });
+            return;
+          }
+          if (selected.type === "connection") {
+            const id = selected.connectionId;
+            setGraph((g) => ({
+              ...g,
+              connections: g.connections.filter((c) => c.id !== id),
+            }));
+            setSelected({ type: "none" });
           }
         }
-        setDrag({ type: "none" });
-      };
-
-      window.addEventListener("pointermove", onPointerMove, { passive: true });
-      window.addEventListener("pointerup", onPointerUp, { passive: true });
-      return () => {
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-      };
-    }, [drag.type]);
-
-    function onKeyDown(e: React.KeyboardEvent) {
-      if (e.key === "Backspace" || e.key === "Delete") {
-        if (selected.type === "node") {
-          const id = selected.nodeId;
-          setGraph((g) => ({
-            ...g,
-            nodes: g.nodes.filter((n) => n.id !== id),
-            connections: g.connections.filter(
-              (c) => c.from.nodeId !== id && c.to.nodeId !== id
-            ),
-          }));
-          setSelected({ type: "none" });
-          return;
-        }
-        if (selected.type === "connection") {
-          const id = selected.connectionId;
-          setGraph((g) => ({
-            ...g,
-            connections: g.connections.filter((c) => c.id !== id),
-          }));
+        if (e.key === "Escape") {
+          setDrag({ type: "none" });
           setSelected({ type: "none" });
         }
-      }
-      if (e.key === "Escape") {
-        setDrag({ type: "none" });
-        setSelected({ type: "none" });
-      }
-    }
+      },
+      [selected, setDrag]
+    );
 
-    function createConnection(
-      from: ConnectionEndpoint,
-      to: ConnectionEndpoint
-    ) {
-      setGraph((g) => {
-        const res = canConnect(g, from, to);
-        if (!res.ok) {
-          setStatus(`Cannot connect (${res.reason})`);
-          return g;
-        }
-        const conn: GraphConnection = {
-          id: createId("c"),
-          kind: res.kind,
-          from,
-          to,
-        };
-        setStatus(`Connected ${res.kind}`);
-        return { ...g, connections: [...g.connections, conn] };
-      });
-    }
+    const handleSelectNode = useCallback((nodeId: string) => {
+      setSelected({ type: "node", nodeId });
+    }, []);
 
-    function emitMidi(nodeId: NodeId, event: MidiEvent): Promise<void> {
-      return new Promise<void>((resolve, reject) => {
-        setGraph((g) => {
-          const next = routeMidi(g, nodeId, event);
-          pendingMidiDispatchQueueRef.current.push({
-            graph: next,
-            nodeId,
-            event,
-            resolve,
-            reject,
-          });
-          return next;
-        });
-      });
-    }
+    const handleSelectConnection = useCallback((connectionId: string) => {
+      setSelected({ type: "connection", connectionId });
+    }, []);
+
+    const handleFocusRoot = useCallback(() => {
+      rootRef.current?.focus();
+    }, []);
 
     return (
       <div
         ref={rootRef}
         className={styles.root}
         tabIndex={0}
-        onKeyDown={onKeyDown}
-        onPointerDown={() => rootRef.current?.focus()}
+        onKeyDown={handleKeyDown}
+        onPointerDown={handleFocusRoot}
       >
         <div
-          ref={worldRef}
           className={styles.world}
           style={{ width: worldSize.width, height: worldSize.height }}
         >
           <svg className={styles.canvas}>
-            {renderCache.connections.map(({ connection: c, d }) => {
-              const color = portKindColor(c.kind);
-              const isSelected =
-                selected.type === "connection" &&
-                selected.connectionId === c.id;
-              return (
-                <g key={c.id}>
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={4}
-                    style={{ cursor: "pointer" }}
-                    pointerEvents="stroke"
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      rootRef.current?.focus();
-                      setSelected({ type: "connection", connectionId: c.id });
-                    }}
-                  />
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke={isSelected ? "#ffffff" : color}
-                    strokeOpacity={isSelected ? 0.75 : 0.6}
-                    strokeWidth={isSelected ? 2.25 : 2.25}
-                    pointerEvents="none"
-                  />
-                </g>
-              );
-            })}
+            {renderCache.connections.map(({ connection, d }) => (
+              <GraphConnectionPath
+                key={connection.id}
+                connection={connection}
+                d={d}
+                isSelected={
+                  selected.type === "connection" &&
+                  selected.connectionId === connection.id
+                }
+                onSelect={handleSelectConnection}
+                onFocusRoot={handleFocusRoot}
+              />
+            ))}
 
-            {drag.type === "connect"
-              ? (() => {
-                  const fromNode = findNode(graph, drag.from.nodeId);
-                  if (!fromNode) return null;
-                  const ports = portMetaForNode(fromNode);
-                  const fromPort = portById(fromNode, drag.from.portId);
-                  if (!fromPort) return null;
-                  const fromIndex = ports.findIndex(
-                    (p) => p.id === fromPort.id
-                  );
-                  const width = nodeWidths[fromNode.id] ?? 240;
-                  const x =
-                    fromPort.direction === "in"
-                      ? fromNode.x
-                      : fromNode.x + width;
-                  const y =
-                    fromNode.y +
-                    NODE_HEADER_HEIGHT +
-                    fromIndex * PORT_ROW_HEIGHT +
-                    PORT_ROW_HEIGHT / 2;
-                  const d = bezierPath(x, y, drag.toX, drag.toY);
-                  return (
-                    <path
-                      d={d}
-                      fill="none"
-                      stroke={portKindColor(drag.kind)}
-                      strokeOpacity={0.5}
-                      strokeWidth={2.25}
-                      strokeDasharray="6 6"
-                    />
-                  );
-                })()
-              : null}
+            <DragConnectionPreview
+              drag={drag}
+              graph={graph}
+              nodeWidths={nodeWidths}
+            />
           </svg>
 
           <div className={styles.nodesLayer}>
             <div className={styles.nodesLayerInner}>
-              {renderCache.nodes.map(({ node, def, ports, Ui }) => {
-                const isSelected =
-                  selected.type === "node" && selected.nodeId === node.id;
-
+              {renderCache.nodes.map(({ node, def: { title }, ports, Ui }) => {
                 const audioLevel = levels[node.id] ?? 0;
                 const normalized = Math.max(0, Math.min(1, audioLevel / 0.12));
                 const meterOpacity =
@@ -893,167 +451,35 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                   node.type === "midiSource" && !!node.state.isEmitting;
 
                 return (
-                  <div
+                  <GraphNodeCard
                     key={node.id}
-                    className={`${styles.node} ${
-                      isSelected ? styles.nodeSelected : ""
-                    }`}
-                    data-node-id={node.id}
-                    ref={(el) => {
-                      const ro = resizeObserverRef.current;
-                      if (!el) {
-                        const prev = nodeElsRef.current.get(node.id);
-                        if (prev && ro) ro.unobserve(prev);
-                        nodeElsRef.current.delete(node.id);
-                        return;
-                      }
-                      nodeElsRef.current.set(node.id, el);
-                      if (ro) ro.observe(el);
-                    }}
-                    style={{
-                      left: node.x,
-                      top: node.y,
-                    }}
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      setSelected({ type: "node", nodeId: node.id });
-                    }}
-                  >
-                    <div
-                      className={styles.nodeHeader}
-                      onPointerDown={(e) => {
-                        if (!rootRef.current) return;
-                        e.stopPropagation();
-                        setSelected({ type: "node", nodeId: node.id });
-                        const p = localPointFromPointerEvent(
-                          rootRef.current,
-                          e
-                        );
-                        const gp = viewToWorld(
-                          p,
-                          scrollRef.current.x,
-                          scrollRef.current.y
-                        );
-                        setDrag({
-                          type: "moveNode",
-                          nodeId: node.id,
-                          offsetX: gp.x - node.x,
-                          offsetY: gp.y - node.y,
-                        });
-                        (e.currentTarget as HTMLDivElement).setPointerCapture(
-                          e.pointerId
-                        );
-                      }}
-                      onPointerUp={(e) => {
-                        (
-                          e.currentTarget as HTMLDivElement
-                        ).releasePointerCapture(e.pointerId);
-                        setDrag({ type: "none" });
-                      }}
-                    >
-                      <div className={styles.nodeTitle}>{def.title}</div>
-                      <div className={styles.nodeIndicators}>
-                        <div
-                          className={`${styles.indicatorDot} ${
-                            midiVisible ? styles.indicatorDotVisible : ""
-                          }`}
-                          style={{ background: portKindColor("midi") }}
-                        />
-                        <div
-                          className={`${styles.indicatorDot} ${
-                            meterVisible ? styles.indicatorDotVisible : ""
-                          }`}
-                          style={{
-                            background: meterColor,
-                            opacity: meterVisible ? meterOpacity : 0,
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    <div className={styles.nodeBody}>
-                      {ports.map((port, index) => {
-                        const top =
-                          index * PORT_ROW_HEIGHT + PORT_ROW_HEIGHT / 2;
-                        const kindColor = portKindColor(port.kind);
-                        const dotStyle: React.CSSProperties = {
-                          borderColor: kindColor,
-                        };
-                        const dotDataProps = {
-                          "data-port": "1",
-                          "data-node-id": node.id,
-                          "data-port-id": port.id,
-                          "data-port-direction": port.direction,
-                          "data-port-kind": port.kind,
-                        } as const;
-
-                        const onDotPointerDown = (e: React.PointerEvent) => {
-                          e.stopPropagation();
-                          if (!rootRef.current) return;
-                          if (port.direction !== "out") return;
-                          const p = localPointFromPointerEvent(
-                            rootRef.current,
-                            e
-                          );
-                          const gp = viewToWorld(
-                            p,
-                            scrollRef.current.x,
-                            scrollRef.current.y
-                          );
-                          setDrag({
-                            type: "connect",
-                            from: { nodeId: node.id, portId: port.id },
-                            kind: port.kind,
-                            toX: gp.x,
-                            toY: gp.y,
-                          });
-                        };
-
-                        return (
-                          <div
-                            key={port.id}
-                            className={`${styles.portRow} ${
-                              port.direction === "in"
-                                ? styles.portIn
-                                : styles.portOut
-                            }`}
-                            style={{ top }}
-                          >
-                            <div
-                              {...dotDataProps}
-                              className={styles.portDot}
-                              style={dotStyle}
-                              onPointerDown={
-                                port.direction === "out"
-                                  ? onDotPointerDown
-                                  : undefined
-                              }
-                            />
-                            <div className={styles.portLabel}>{port.name}</div>
-                          </div>
-                        );
-                      })}
-                      <Ui
-                        node={node}
-                        onPatchNode={patchNode}
-                        onEmitMidi={emitMidi}
-                        debug={debug[node.id]}
-                      />
-                    </div>
-                  </div>
+                    node={node}
+                    title={title}
+                    ports={ports}
+                    isSelected={
+                      selected.type === "node" && selected.nodeId === node.id
+                    }
+                    meterVisible={meterVisible}
+                    meterColor={meterColor}
+                    meterOpacity={meterOpacity}
+                    midiVisible={midiVisible}
+                    Ui={Ui}
+                    debug={debug[node.id]}
+                    rootRef={rootRef}
+                    scrollRef={scrollRef}
+                    onRegisterNodeEl={registerNodeEl}
+                    onSelectNode={handleSelectNode}
+                    onStartDrag={setDrag}
+                    onPatchNode={patchNode}
+                    onEmitMidi={emitMidi}
+                  />
                 );
               })}
             </div>
           </div>
         </div>
 
-        <div className={styles.hud}>
-          <div className={styles.hint}>
-            Drag nodes. Drag from an output port to an input port to connect.
-            Click a wire (or node header) and press Delete to remove.
-          </div>
-          {status ? <div className={styles.hint}>{status}</div> : null}
-        </div>
+        <GraphHUD status={status} />
       </div>
     );
   }

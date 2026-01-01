@@ -70,3 +70,24 @@ export type MidiEvent =
       channel: number;
       atMs: number;
     };
+
+export type DragState =
+  | { type: "none" }
+  | {
+      type: "moveNode";
+      nodeId: NodeId;
+      offsetX: number;
+      offsetY: number;
+    }
+  | {
+      type: "connect";
+      from: ConnectionEndpoint;
+      kind: PortKind;
+      toX: number;
+      toY: number;
+    };
+
+export type Selected =
+  | { type: "none" }
+  | { type: "node"; nodeId: NodeId }
+  | { type: "connection"; connectionId: ConnectionId };
