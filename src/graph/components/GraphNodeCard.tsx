@@ -97,7 +97,7 @@ export function GraphNodeCard({
       className={`${styles.node} ${isSelected ? styles.nodeSelected : ""}`}
       data-node-id={node.id}
       ref={(el) => onRegisterNodeEl(node.id, el)}
-      style={{ left: node.x, top: node.y }}
+      style={{ left: node.x, top: node.y, zIndex: isSelected ? 1 : 0 }}
       onPointerDown={(e) => {
         e.stopPropagation();
         onSelectNode(node.id);
