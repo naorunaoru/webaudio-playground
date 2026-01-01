@@ -295,6 +295,26 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     const handleSelectNode = useCallback((nodeId: string) => {
       setSelected({ type: "node", nodeId });
+      setGraph((g) => {
+        const currentZ = g.nodeZOrder ?? {};
+        const maxZ = Math.max(0, ...Object.values(currentZ));
+        if (currentZ[nodeId] === maxZ) return g; // Already on top
+
+        // Normalize if z-indices are getting too large
+        if (maxZ > g.nodes.length * 2) {
+          const sorted = Object.entries(currentZ)
+            .filter(([id]) => id !== nodeId)
+            .sort((a, b) => a[1] - b[1]);
+          const normalized: Record<string, number> = {};
+          sorted.forEach(([id], i) => {
+            normalized[id] = i + 1;
+          });
+          normalized[nodeId] = sorted.length + 1;
+          return { ...g, nodeZOrder: normalized };
+        }
+
+        return { ...g, nodeZOrder: { ...currentZ, [nodeId]: maxZ + 1 } };
+      });
     }, []);
 
     const handleSelectConnection = useCallback((connectionId: string) => {
@@ -368,6 +388,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                     isSelected={
                       selected.type === "node" && selected.nodeId === node.id
                     }
+                    zIndex={graph.nodeZOrder?.[node.id] ?? 0}
                     meterVisible={meterVisible}
                     meterColor={meterColor}
                     meterOpacity={meterOpacity}

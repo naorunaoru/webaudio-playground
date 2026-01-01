@@ -47,6 +47,7 @@ export type GraphNode = {
 export type GraphState = {
   nodes: GraphNode[];
   connections: GraphConnection[];
+  nodeZOrder?: Record<NodeId, number>;
 };
 
 export type MidiEvent =

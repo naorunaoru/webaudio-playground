@@ -4,7 +4,6 @@ import type {
   GraphNode,
   MidiEvent,
   NodeId,
-  PortKind,
   PortSpec,
 } from "../types";
 import { portKindColor } from "../nodeRegistry";
@@ -17,6 +16,7 @@ export type GraphNodeCardProps = {
   title: string;
   ports: readonly PortSpec[];
   isSelected: boolean;
+  zIndex: number;
   meterVisible: boolean;
   meterColor: string;
   meterOpacity: number;
@@ -42,6 +42,7 @@ export function GraphNodeCard({
   title,
   ports,
   isSelected,
+  zIndex,
   meterVisible,
   meterColor,
   meterOpacity,
@@ -97,7 +98,7 @@ export function GraphNodeCard({
       className={`${styles.node} ${isSelected ? styles.nodeSelected : ""}`}
       data-node-id={node.id}
       ref={(el) => onRegisterNodeEl(node.id, el)}
-      style={{ left: node.x, top: node.y, zIndex: isSelected ? 1 : 0 }}
+      style={{ left: node.x, top: node.y, zIndex }}
       onPointerDown={(e) => {
         e.stopPropagation();
         onSelectNode(node.id);
