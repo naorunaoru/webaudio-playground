@@ -63,11 +63,18 @@ export function canConnect(
   return { ok: true, kind: fromPort.kind };
 }
 
-export function createNode(
-  type: GraphNode["type"],
+export function createNode<TType extends GraphNode["type"]>(
+  type: TType,
   x: number,
-  y: number
-): GraphNode {
-  const def = getNodeDef(type as any) as any;
-  return { id: createId("n"), type, x, y, state: def.defaultState() };
+  y: number,
+  id?: string
+): Extract<GraphNode, { type: TType }> {
+  const def = getNodeDef(type);
+  return {
+    id: id ?? createId("n"),
+    type,
+    x,
+    y,
+    state: def.defaultState(),
+  } as Extract<GraphNode, { type: TType }>;
 }

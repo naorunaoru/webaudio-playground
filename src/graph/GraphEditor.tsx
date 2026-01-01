@@ -21,6 +21,7 @@ import { getNodeDef, portKindColor } from "./nodeRegistry";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
 import { bezierPath } from "./coordinates";
 import { canConnect, createNode, portMetaForNode } from "./graphUtils";
+import { initialGraph } from "./initialGraph";
 import { loadGraphFromStorage, saveGraphToStorage } from "./graphStorage";
 import {
   useAudioLevels,
@@ -35,106 +36,6 @@ import {
   GraphNodeCard,
 } from "./components";
 import { createId } from "./id";
-
-function initialGraph(): GraphState {
-  return {
-    nodes: [
-      {
-        id: "n_midi",
-        type: "midiSource",
-        x: 40,
-        y: 120,
-        state: getNodeDef("midiSource").defaultState(),
-      } as any,
-      {
-        id: "n_cc",
-        type: "ccSource",
-        x: 40,
-        y: 300,
-        state: getNodeDef("ccSource").defaultState(),
-      } as any,
-      {
-        id: "n_osc",
-        type: "oscillator",
-        x: 340,
-        y: 90,
-        state: getNodeDef("oscillator").defaultState(),
-      } as any,
-      {
-        id: "n_env",
-        type: "envelope",
-        x: 340,
-        y: 290,
-        state: getNodeDef("envelope").defaultState(),
-      } as any,
-      {
-        id: "n_filter",
-        type: "filter",
-        x: 520,
-        y: 150,
-        state: getNodeDef("filter").defaultState(),
-      } as any,
-      {
-        id: "n_gain",
-        type: "gain",
-        x: 700,
-        y: 150,
-        state: getNodeDef("gain").defaultState(),
-      } as any,
-      {
-        id: "n_out",
-        type: "audioOut",
-        x: 880,
-        y: 150,
-        state: getNodeDef("audioOut").defaultState(),
-      } as any,
-    ],
-    connections: [
-      {
-        id: "c_midi_osc",
-        kind: "midi",
-        from: { nodeId: "n_midi", portId: "midi_out" },
-        to: { nodeId: "n_osc", portId: "midi_in" },
-      },
-      {
-        id: "c_midi_env",
-        kind: "midi",
-        from: { nodeId: "n_midi", portId: "midi_out" },
-        to: { nodeId: "n_env", portId: "midi_in" },
-      },
-      {
-        id: "c_osc_gain",
-        kind: "audio",
-        from: { nodeId: "n_osc", portId: "audio_out" },
-        to: { nodeId: "n_filter", portId: "audio_in" },
-      },
-      {
-        id: "c_filter_gain",
-        kind: "audio",
-        from: { nodeId: "n_filter", portId: "audio_out" },
-        to: { nodeId: "n_gain", portId: "audio_in" },
-      },
-      {
-        id: "c_env_gain",
-        kind: "automation",
-        from: { nodeId: "n_env", portId: "env_out" },
-        to: { nodeId: "n_gain", portId: "gain_in" },
-      },
-      {
-        id: "c_env_filter",
-        kind: "automation",
-        from: { nodeId: "n_env", portId: "env_out" },
-        to: { nodeId: "n_filter", portId: "freq_in" },
-      },
-      {
-        id: "c_gain_out",
-        kind: "audio",
-        from: { nodeId: "n_gain", portId: "audio_out" },
-        to: { nodeId: "n_out", portId: "audio_in" },
-      },
-    ],
-  };
-}
 
 export type GraphEditorProps = Readonly<{
   audioState: AudioContextState | "off";
