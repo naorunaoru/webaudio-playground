@@ -1,7 +1,7 @@
 import type { GraphNode, NodeId } from "../../graph/types";
 import type { AudioNodeFactory, AudioNodeInstance } from "../../types/audioRuntime";
 import type { AudioNodeServices } from "../../types/nodeModule";
-import limiterProcessorUrl from "./processor.ts?url";
+import limiterProcessorUrl from "./processor.ts?worklet";
 import limiterWasmUrl from "./limiter.wasm?url";
 
 type LimiterGraphNode = Extract<GraphNode, { type: "limiter" }>;

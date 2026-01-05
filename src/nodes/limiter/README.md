@@ -15,7 +15,7 @@ This node is a minimal template for writing DSP in Rust, compiling it to WebAsse
 ## Files and responsibilities
 
 - `index.ts`
-  - Exports `limiterNode` and declares `workletModules: ["./processor.ts?url"]` so the engine preloads the processor code.
+  - Exports `limiterNode` and declares `workletModules: ["./processor.ts?worklet"]` so the engine preloads the processor code.
 - `audio.ts`
   - Creates the `AudioWorkletNode` (`new AudioWorkletNode(ctx, "limiter", ...)`).
   - Loads `limiter.wasm` via Vite asset import (`import limiterWasmUrl from "./limiter.wasm?url"`) and passes `processorOptions.wasmBytes` so the processor can instantiate WASM without fetching.
