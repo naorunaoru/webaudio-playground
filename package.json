@@ -10,7 +10,8 @@
     "prebuild": "npm run build-wasm",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "showcase": "vite --config vite.showcase.config.ts"
   },
   "author": "",
   "license": "ISC",

@@ -1,8 +1,18 @@
 import type { GraphNode } from "../../graph/types";
 import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
+import { Knob, RadioGroup } from "../../ui/components";
+import { ThemeProvider } from "../../ui/context";
+import { FilterTypeIcon } from "../../ui/icons";
+import type { ControlTheme, OptionDef } from "../../ui/types";
 import type { FilterType } from "./types";
 
 type FilterNodeGraph = Extract<GraphNode, { type: "filter" }>;
+
+const filterTheme: ControlTheme = {
+  primary: "#60a5fa", // Blue - filter/cutoff
+  secondary: "#93c5fd",
+  tertiary: "#3b82f6",
+};
 
 function clamp(v: number, min: number, max: number): number {
   if (!Number.isFinite(v)) return min;
@@ -14,20 +24,6 @@ function clampPositive(v: number, fallback: number): number {
   return v;
 }
 
-function hzFromNorm(t: number): number {
-  const min = 20;
-  const max = 20000;
-  const clamped = clamp(t, 0, 1);
-  return min * Math.pow(max / min, clamped);
-}
-
-function normFromHz(hz: number): number {
-  const min = 20;
-  const max = 20000;
-  const clamped = clamp(hz, min, max);
-  return Math.log(clamped / min) / Math.log(max / min);
-}
-
 function defaultState(): FilterNodeGraph["state"] {
   return {
     type: "lowpass",
@@ -37,81 +33,54 @@ function defaultState(): FilterNodeGraph["state"] {
   };
 }
 
+const typeOptions: OptionDef<FilterType>[] = [
+  { value: "lowpass", content: <FilterTypeIcon type="lowpass" />, ariaLabel: "Lowpass" },
+  { value: "highpass", content: <FilterTypeIcon type="highpass" />, ariaLabel: "Highpass" },
+];
+
 const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode }) => {
-  const freqNorm = normFromHz(node.state.frequencyHz);
+  const nyquist = 22050; // UI clamp only; audio runtime clamps to actual nyquist.
+  const freqHz = clamp(node.state.frequencyHz, 20, nyquist);
+  const q = clamp(node.state.q, 0.0001, 30);
+  const envAmountHz = clamp(node.state.envAmountHz, 0, nyquist);
+
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <label style={{ display: "grid", gap: 6 }}>
-        <span style={{ fontSize: 12, opacity: 0.75 }}>Type</span>
-        <select
-          value={node.state.type}
-          onChange={(e) =>
-            onPatchNode(node.id, { type: e.target.value as FilterType })
-          }
-        >
-          <option value="lowpass">lowpass</option>
-          <option value="highpass">highpass</option>
-        </select>
-      </label>
+    <ThemeProvider theme={filterTheme}>
+      <div style={{ display: "grid", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <RadioGroup value={node.state.type} onChange={(t) => onPatchNode(node.id, { type: t })} options={typeOptions} label="Type" />
+        </div>
 
-      <label style={{ display: "grid", gap: 6 }}>
-        <span style={{ fontSize: 12, opacity: 0.75 }}>
-          Frequency: {Math.round(node.state.frequencyHz)} Hz
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={1}
-          step={0.001}
-          value={freqNorm}
-          onInput={(e) =>
-            onPatchNode(node.id, {
-              frequencyHz: hzFromNorm(Number((e.target as HTMLInputElement).value)),
-            })
-          }
-        />
-        <input
-          type="number"
-          min={20}
-          max={20000}
-          step={1}
-          value={Math.round(node.state.frequencyHz)}
-          onChange={(e) =>
-            onPatchNode(node.id, { frequencyHz: Number(e.target.value) })
-          }
-        />
-      </label>
-
-      <label style={{ display: "grid", gap: 6 }}>
-        <span style={{ fontSize: 12, opacity: 0.75 }}>Q: {node.state.q.toFixed(2)}</span>
-        <input
-          type="range"
-          min={0.0001}
-          max={30}
-          step={0.0001}
-          value={node.state.q}
-          onInput={(e) =>
-            onPatchNode(node.id, { q: Number((e.target as HTMLInputElement).value) })
-          }
-        />
-      </label>
-
-      <label style={{ display: "grid", gap: 6 }}>
-        <span style={{ fontSize: 12, opacity: 0.75 }}>
-          Env Amount: {Math.round(node.state.envAmountHz)} Hz
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={20000}
-          step={1}
-          value={node.state.envAmountHz}
-          onInput={(e) =>
-            onPatchNode(node.id, { envAmountHz: Number((e.target as HTMLInputElement).value) })
-          }
-        />
-      </label>
-    </div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <Knob
+            value={freqHz}
+            onChange={(v) => onPatchNode(node.id, { frequencyHz: v })}
+            min={20}
+            max={20000}
+            label="Freq"
+            format={(v) => Math.round(v).toString()}
+            unit="Hz"
+          />
+          <Knob
+            value={q}
+            onChange={(v) => onPatchNode(node.id, { q: v })}
+            min={0.0001}
+            max={30}
+            label="Q"
+            format={(v) => v.toFixed(2)}
+          />
+          <Knob
+            value={envAmountHz}
+            onChange={(v) => onPatchNode(node.id, { envAmountHz: v })}
+            min={0}
+            max={20000}
+            label="Env"
+            format={(v) => Math.round(v).toString()}
+            unit="Hz"
+          />
+        </div>
+      </div>
+    </ThemeProvider>
   );
 };
 
@@ -137,4 +106,3 @@ export const filterGraph: NodeDefinition<FilterNodeGraph> = {
     };
   },
 };
-

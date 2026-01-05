@@ -1,5 +1,14 @@
 import type { GraphNode } from "../../graph/types";
 import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
+import { Knob } from "../../ui/components/Knob";
+import { ThemeProvider } from "../../ui/context";
+import type { ControlTheme } from "../../ui/types/theme";
+
+const delayTheme: ControlTheme = {
+  primary: "#f59e0b", // Amber - warm echo
+  secondary: "#fbbf24",
+  tertiary: "#d97706",
+};
 
 type DelayNode = Extract<GraphNode, { type: "delay" }>;
 
@@ -18,77 +27,35 @@ const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode }) => {
   const mix = clamp(node.state.mix, 0, 1);
 
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <label style={{ display: "grid", gap: 6 }}>
-        <span style={{ fontSize: 12, opacity: 0.75 }}>Speed (delay): {Math.round(delayMs)} ms</span>
-        <input
-          type="range"
+    <ThemeProvider theme={delayTheme}>
+      <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+        <Knob
+          value={delayMs}
+          onChange={(v) => onPatchNode(node.id, { delayMs: v })}
           min={0}
           max={1500}
-          value={delayMs}
-          onInput={(e) => onPatchNode(node.id, { delayMs: Number((e.target as HTMLInputElement).value) })}
+          label="Time"
+          format={(v) => Math.round(v).toString()}
+          unit="ms"
         />
-      </label>
-
-      <label style={{ display: "grid", gap: 6 }}>
-        <span style={{ fontSize: 12, opacity: 0.75 }}>
-          Decay (feedback): {Math.round(feedback * 100)}%
-        </span>
-        <input
-          type="range"
+        <Knob
+          value={feedback}
+          onChange={(v) => onPatchNode(node.id, { feedback: v })}
           min={0}
-          max={98}
-          value={Math.round(feedback * 100)}
-          onInput={(e) => onPatchNode(node.id, { feedback: Number((e.target as HTMLInputElement).value) / 100 })}
+          max={0.98}
+          label="Feedback"
+          format={(v) => `${Math.round(v * 100)}%`}
         />
-      </label>
-
-      <label style={{ display: "grid", gap: 6 }}>
-        <span style={{ fontSize: 12, opacity: 0.75 }}>Mix: {Math.round(mix * 100)}%</span>
-        <input
-          type="range"
+        <Knob
+          value={mix}
+          onChange={(v) => onPatchNode(node.id, { mix: v })}
           min={0}
-          max={100}
-          value={Math.round(mix * 100)}
-          onInput={(e) => onPatchNode(node.id, { mix: Number((e.target as HTMLInputElement).value) / 100 })}
+          max={1}
+          label="Mix"
+          format={(v) => `${Math.round(v * 100)}%`}
         />
-      </label>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 11, opacity: 0.65 }}>Delay (ms)</span>
-          <input
-            type="number"
-            min={0}
-            max={5000}
-            value={Math.round(delayMs)}
-            onChange={(e) => onPatchNode(node.id, { delayMs: Number(e.target.value) })}
-          />
-        </label>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 11, opacity: 0.65 }}>Feedback</span>
-          <input
-            type="number"
-            min={0}
-            max={0.98}
-            step={0.01}
-            value={Number(feedback.toFixed(2))}
-            onChange={(e) => onPatchNode(node.id, { feedback: Number(e.target.value) })}
-          />
-        </label>
-        <label style={{ display: "grid", gap: 6 }}>
-          <span style={{ fontSize: 11, opacity: 0.65 }}>Mix</span>
-          <input
-            type="number"
-            min={0}
-            max={1}
-            step={0.01}
-            value={Number(mix.toFixed(2))}
-            onChange={(e) => onPatchNode(node.id, { mix: Number(e.target.value) })}
-          />
-        </label>
       </div>
-    </div>
+    </ThemeProvider>
   );
 };
 

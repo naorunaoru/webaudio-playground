@@ -1,5 +1,14 @@
 import type { GraphNode } from "../../graph/types";
 import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
+import { Knob } from "../../ui/components/Knob";
+import { ThemeProvider } from "../../ui/context";
+import type { ControlTheme } from "../../ui/types/theme";
+
+const gainTheme: ControlTheme = {
+  primary: "#22c55e", // Green - level/volume
+  secondary: "#4ade80",
+  tertiary: "#16a34a",
+};
 
 type GainNodeGraph = Extract<GraphNode, { type: "gain" }>;
 
@@ -14,21 +23,18 @@ function defaultState(): GainNodeGraph["state"] {
 
 const GainUi: React.FC<NodeUiProps<GainNodeGraph>> = ({ node, onPatchNode }) => {
   return (
-    <div style={{ display: "grid", gap: 10 }}>
-      <label style={{ display: "grid", gap: 6 }}>
-        <span style={{ fontSize: 12, opacity: 0.75 }}>Depth: {node.state.depth.toFixed(2)}</span>
-        <input
-          type="range"
+    <ThemeProvider theme={gainTheme}>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <Knob
+          value={node.state.depth}
+          onChange={(v) => onPatchNode(node.id, { depth: v })}
           min={0}
           max={2}
-          step={0.01}
-          value={node.state.depth}
-          onInput={(e) =>
-            onPatchNode(node.id, { depth: Number((e.target as HTMLInputElement).value) })
-          }
+          label="Gain"
+          format={(v) => v.toFixed(2)}
         />
-      </label>
-    </div>
+      </div>
+    </ThemeProvider>
   );
 };
 

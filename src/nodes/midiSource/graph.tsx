@@ -1,6 +1,18 @@
 import { useRef, useState } from "react";
 import type { GraphNode } from "../../graph/types";
-import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
+import type {
+  NodeDefinition,
+  NodeUiProps,
+} from "../../types/graphNodeDefinition";
+import { NumericInput } from "../../ui/components/NumericInput";
+import { ThemeProvider } from "../../ui/context";
+import type { ControlTheme } from "../../ui/types/theme";
+
+const midiTheme: ControlTheme = {
+  primary: "#a855f7", // Purple - MIDI/music
+  secondary: "#c084fc",
+  tertiary: "#9333ea",
+};
 
 type MidiSourceNode = Extract<GraphNode, { type: "midiSource" }>;
 
@@ -23,102 +35,115 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
   const activePointerIdRef = useRef<number | null>(null);
 
   return (
-    <div>
-      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <button
-          type="button"
-          aria-pressed={isHeld}
+    <ThemeProvider theme={midiTheme}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div
           style={{
-            background: isHeld ? "rgba(180, 142, 173, 0.18)" : undefined,
-            borderColor: isHeld ? "rgba(180, 142, 173, 0.55)" : undefined,
-          }}
-          onPointerDown={async (e) => {
-            if (activePointerIdRef.current != null) return;
-            activePointerIdRef.current = e.pointerId;
-            (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
-            setIsHeld(true);
-
-            const atMs = performance.now();
-            onPatchNode(node.id, { isEmitting: true, lastTriggeredAtMs: atMs });
-            await onEmitMidi?.(node.id, {
-              type: "noteOn",
-              note: node.state.note,
-              velocity: node.state.velocity,
-              channel: node.state.channel,
-              atMs,
-            });
-          }}
-          onPointerUp={async (e) => {
-            if (activePointerIdRef.current !== e.pointerId) return;
-            activePointerIdRef.current = null;
-            (e.currentTarget as HTMLButtonElement).releasePointerCapture(e.pointerId);
-            setIsHeld(false);
-
-            const atMs = performance.now();
-            onPatchNode(node.id, { isEmitting: false });
-            await onEmitMidi?.(node.id, {
-              type: "noteOff",
-              note: node.state.note,
-              channel: node.state.channel,
-              atMs,
-            });
-          }}
-          onPointerCancel={() => {
-            if (activePointerIdRef.current == null) return;
-            activePointerIdRef.current = null;
-            setIsHeld(false);
-            const atMs = performance.now();
-            onPatchNode(node.id, { isEmitting: false });
-            void onEmitMidi?.(node.id, {
-              type: "noteOff",
-              note: node.state.note,
-              channel: node.state.channel,
-              atMs,
-            });
-          }}
-          onPointerLeave={() => {
-            if (activePointerIdRef.current == null) return;
-            activePointerIdRef.current = null;
-            setIsHeld(false);
-            const atMs = performance.now();
-            onPatchNode(node.id, { isEmitting: false });
-            void onEmitMidi?.(node.id, {
-              type: "noteOff",
-              note: node.state.note,
-              channel: node.state.channel,
-              atMs,
-            });
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            justifyContent: "center",
           }}
         >
-          Trigger
-        </button>
-        <span style={{ opacity: 0.75, fontSize: 12 }}>note {node.state.note}</span>
-      </div>
-      <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: 12, opacity: 0.75 }}>Note</span>
-          <input
-            type="number"
+          <button
+            type="button"
+            aria-pressed={isHeld}
+            style={{
+              background: isHeld ? "rgba(168, 85, 247, 0.18)" : undefined,
+              borderColor: isHeld ? "rgba(168, 85, 247, 0.55)" : undefined,
+            }}
+            onPointerDown={async (e) => {
+              if (activePointerIdRef.current != null) return;
+              activePointerIdRef.current = e.pointerId;
+              (e.currentTarget as HTMLButtonElement).setPointerCapture(
+                e.pointerId
+              );
+              setIsHeld(true);
+
+              const atMs = performance.now();
+              onPatchNode(node.id, {
+                isEmitting: true,
+                lastTriggeredAtMs: atMs,
+              });
+              await onEmitMidi?.(node.id, {
+                type: "noteOn",
+                note: node.state.note,
+                velocity: node.state.velocity,
+                channel: node.state.channel,
+                atMs,
+              });
+            }}
+            onPointerUp={async (e) => {
+              if (activePointerIdRef.current !== e.pointerId) return;
+              activePointerIdRef.current = null;
+              (e.currentTarget as HTMLButtonElement).releasePointerCapture(
+                e.pointerId
+              );
+              setIsHeld(false);
+
+              const atMs = performance.now();
+              onPatchNode(node.id, { isEmitting: false });
+              await onEmitMidi?.(node.id, {
+                type: "noteOff",
+                note: node.state.note,
+                channel: node.state.channel,
+                atMs,
+              });
+            }}
+            onPointerCancel={() => {
+              if (activePointerIdRef.current == null) return;
+              activePointerIdRef.current = null;
+              setIsHeld(false);
+              const atMs = performance.now();
+              onPatchNode(node.id, { isEmitting: false });
+              void onEmitMidi?.(node.id, {
+                type: "noteOff",
+                note: node.state.note,
+                channel: node.state.channel,
+                atMs,
+              });
+            }}
+            onPointerLeave={() => {
+              if (activePointerIdRef.current == null) return;
+              activePointerIdRef.current = null;
+              setIsHeld(false);
+              const atMs = performance.now();
+              onPatchNode(node.id, { isEmitting: false });
+              void onEmitMidi?.(node.id, {
+                type: "noteOff",
+                note: node.state.note,
+                channel: node.state.channel,
+                atMs,
+              });
+            }}
+          >
+            Trigger
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+          <NumericInput
+            value={node.state.note}
+            onChange={(v) => onPatchNode(node.id, { note: Math.round(v) })}
             min={0}
             max={127}
-            value={node.state.note}
-            onChange={(e) => onPatchNode(node.id, { note: Number(e.target.value) })}
-            style={{ width: 64 }}
+            step={1}
+            label="Note"
+            format={(v) => Math.round(v).toString()}
+            width={48}
           />
-        </label>
-        <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <span style={{ fontSize: 12, opacity: 0.75 }}>Vel</span>
-          <input
-            type="number"
+          <NumericInput
+            value={node.state.velocity}
+            onChange={(v) => onPatchNode(node.id, { velocity: Math.round(v) })}
             min={1}
             max={127}
-            value={node.state.velocity}
-            onChange={(e) => onPatchNode(node.id, { velocity: Number(e.target.value) })}
-            style={{ width: 64 }}
+            step={1}
+            label="Vel"
+            format={(v) => Math.round(v).toString()}
+            width={48}
           />
-        </label>
+        </div>
       </div>
-    </div>
+    </ThemeProvider>
   );
 };
 
@@ -126,7 +151,9 @@ export const midiSourceGraph: NodeDefinition<MidiSourceNode> = {
   type: "midiSource",
   title: "MIDI Source",
   defaultState,
-  ports: () => [{ id: "midi_out", name: "MIDI", kind: "midi", direction: "out" }],
+  ports: () => [
+    { id: "midi_out", name: "MIDI", kind: "midi", direction: "out" },
+  ],
   ui: MidiSourceUi,
   normalizeState: (state) => {
     const s = (state ?? {}) as Partial<MidiSourceNode["state"]>;
