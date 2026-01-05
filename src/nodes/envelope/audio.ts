@@ -52,6 +52,8 @@ function createEnvelopeRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeIns
   let noteOnStartLevel = 0;
   let noteOnPeak = 0;
   let noteOnSustainLevel = 0;
+  let lastMidiAtMs: number | null = null;
+  let lastMidiOffAtMs: number | null = null;
 
   function levelAtElapsedSec(elapsedSec: number, state: EnvelopeRuntimeState): number {
     const env = state.env;
@@ -140,8 +142,15 @@ function createEnvelopeRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeIns
     },
     handleMidi: (event, portId, state) => {
       if (portId && portId !== "midi_in") return;
-      if (event.type === "noteOn") applyEnvelopeNoteOn(event, state);
-      if (event.type === "noteOff") applyEnvelopeNoteOff(event, state);
+      if (event.type === "noteOn") {
+        lastMidiAtMs = event.atMs;
+        lastMidiOffAtMs = null;
+        applyEnvelopeNoteOn(event, state);
+      }
+      if (event.type === "noteOff") {
+        lastMidiOffAtMs = event.atMs;
+        applyEnvelopeNoteOff(event, state);
+      }
     },
     onRemove: () => {
       amp.disconnect();
@@ -152,6 +161,10 @@ function createEnvelopeRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeIns
         // ignore
       }
     },
+    getRuntimeState: () => ({
+      lastMidiAtMs,
+      lastMidiOffAtMs,
+    }),
   };
 }
 

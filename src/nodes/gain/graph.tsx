@@ -21,7 +21,7 @@ function defaultState(): GainNodeGraph["state"] {
   return { depth: 1 };
 }
 
-const GainUi: React.FC<NodeUiProps<GainNodeGraph>> = ({ node, onPatchNode }) => {
+const GainUi: React.FC<NodeUiProps<GainNodeGraph>> = ({ node, onPatchNode, startBatch, endBatch }) => {
   return (
     <ThemeProvider theme={gainTheme}>
       <div style={{ display: "flex", justifyContent: "center" }}>
@@ -32,6 +32,8 @@ const GainUi: React.FC<NodeUiProps<GainNodeGraph>> = ({ node, onPatchNode }) => 
           max={2}
           label="Gain"
           format={(v) => v.toFixed(2)}
+          onDragStart={startBatch}
+          onDragEnd={endBatch}
         />
       </div>
     </ThemeProvider>

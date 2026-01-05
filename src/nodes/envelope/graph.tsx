@@ -68,8 +68,19 @@ function mapCcToEnvPatch(
 const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
   node,
   onPatchNode,
+  runtimeState,
+  startBatch,
+  endBatch,
 }) => {
   const env = node.state.env;
+  const dbg =
+    runtimeState && typeof runtimeState === "object"
+      ? (runtimeState as any)
+      : null;
+  const noteOnAtMs =
+    typeof dbg?.lastMidiAtMs === "number" ? dbg.lastMidiAtMs : null;
+  const noteOffAtMs =
+    typeof dbg?.lastMidiOffAtMs === "number" ? dbg.lastMidiOffAtMs : null;
 
   return (
     <ThemeProvider theme={envelopeTheme}>
@@ -77,8 +88,10 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
         <EnvelopeEditor
           env={env}
           onChangeEnv={(next) => onPatchNode(node.id, { env: next })}
-          noteOnAtMs={node.state.lastMidiAtMs}
-          noteOffAtMs={node.state.lastMidiOffAtMs}
+          noteOnAtMs={noteOnAtMs}
+          noteOffAtMs={noteOffAtMs}
+          onDragStart={startBatch}
+          onDragEnd={endBatch}
         />
 
         <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
@@ -94,6 +107,8 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
             format={(v) => Math.round(v).toString()}
             unit="ms"
             width={56}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
           <NumericInput
             value={env.decayMs}
@@ -107,6 +122,8 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
             format={(v) => Math.round(v).toString()}
             unit="ms"
             width={56}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
           <NumericInput
             value={env.sustain}
@@ -119,6 +136,8 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
             label="S"
             format={(v) => v.toFixed(2)}
             width={56}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
           <NumericInput
             value={env.releaseMs}
@@ -132,6 +151,8 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
             format={(v) => Math.round(v).toString()}
             unit="ms"
             width={56}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
         </div>
       </div>

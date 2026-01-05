@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import type { GraphState, GraphNode } from "../graph/types";
 import { putSampleFromFile } from "../audio/sampleStore";
-import { normalizeGraph } from "../graph/graphStorage";
+import { normalizeGraph } from "../graph/graphUtils";
 import {
   MetaSchema,
   GraphStateSchema,

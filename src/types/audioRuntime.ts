@@ -9,7 +9,8 @@ export type AudioNodeInstance<TNode extends GraphNode = GraphNode> = {
   onRemove?: () => void;
   getLevel?: () => number;
   getWaveform?: (length: number) => Float32Array | null;
-  getDebug?: () => unknown;
+  /** Runtime-only data for UI/telemetry; not persisted into the graph document. */
+  getRuntimeState?: () => unknown;
 };
 
 export type AudioNodeFactory<TNode extends GraphNode = GraphNode> = Readonly<{

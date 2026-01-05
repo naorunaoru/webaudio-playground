@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import { transform } from "esbuild";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import wasm from "vite-plugin-wasm";
 
 function computeBase(): string {
   if (process.env.VITE_BASE) return process.env.VITE_BASE;
@@ -73,5 +74,13 @@ function audioWorkletPlugin(): Plugin {
 
 export default defineConfig(() => ({
   base: computeBase(),
-  plugins: [audioWorkletPlugin(), react()],
+  plugins: [wasm(), audioWorkletPlugin(), react()],
+  build: {
+    target: "esnext",
+  },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: "esnext",
+    },
+  },
 }));

@@ -4,8 +4,12 @@ import type { GraphNode, MidiEvent, NodeId, PortSpec } from "../graph/types";
 export type NodeUiProps<TNode extends GraphNode> = Readonly<{
   node: TNode;
   onPatchNode: (nodeId: NodeId, patch: Partial<TNode["state"]>) => void;
+  /** Ephemeral patch - changes state without creating history entry (for MIDI triggers, playhead, etc.) */
+  onPatchNodeEphemeral?: (nodeId: NodeId, patch: Partial<TNode["state"]>) => void;
   onEmitMidi?: (nodeId: NodeId, event: MidiEvent) => void | Promise<void>;
-  debug?: unknown;
+  runtimeState?: unknown;
+  startBatch?: () => void;
+  endBatch?: () => void;
 }>;
 
 export type NodeDefinition<TNode extends GraphNode> = Readonly<{

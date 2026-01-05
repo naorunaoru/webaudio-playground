@@ -1,31 +1,40 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useRef } from "react";
 import type { GraphState, MidiEvent, NodeId } from "../types";
 import { getAudioEngine } from "../../audio/engine";
-import { routeMidi } from "../midiRouting";
+import { computeMidiPatches } from "../midiRouting";
 
 type MidiQueueItem = {
   graph: GraphState;
   nodeId: NodeId;
   event: MidiEvent;
+  patches: Map<NodeId, Record<string, unknown>>;
   resolve: () => void;
   reject: (err: unknown) => void;
 };
 
 type UseMidiDispatchOptions = {
   graph: GraphState;
-  setGraph: React.Dispatch<React.SetStateAction<GraphState>>;
   onEnsureAudioRunning?: (graph: GraphState) => Promise<void>;
+  onPatchNodesEphemeral?: (patches: Map<NodeId, Record<string, unknown>>) => void;
 };
 
 export function useMidiDispatch({
   graph,
-  setGraph,
   onEnsureAudioRunning,
+  onPatchNodesEphemeral,
 }: UseMidiDispatchOptions) {
   const pendingMidiDispatchQueueRef = useRef<MidiQueueItem[]>([]);
   const drainingMidiDispatchQueueRef = useRef(false);
+  const graphRef = useRef(graph);
+  const onEnsureAudioRunningRef = useRef(onEnsureAudioRunning);
+  const onPatchNodesEphemeralRef = useRef(onPatchNodesEphemeral);
 
-  useEffect(() => {
+  // Keep refs up to date
+  graphRef.current = graph;
+  onEnsureAudioRunningRef.current = onEnsureAudioRunning;
+  onPatchNodesEphemeralRef.current = onPatchNodesEphemeral;
+
+  const drainQueue = useCallback(() => {
     const queue = pendingMidiDispatchQueueRef.current;
     if (queue.length === 0) return;
     if (drainingMidiDispatchQueueRef.current) return;
@@ -36,8 +45,13 @@ export function useMidiDispatch({
         while (queue.length > 0) {
           const item = queue.shift()!;
           try {
-            await onEnsureAudioRunning?.(item.graph);
-            getAudioEngine().dispatchMidi(item.graph, item.nodeId, item.event);
+            await onEnsureAudioRunningRef.current?.(item.graph);
+            getAudioEngine().dispatchMidi(
+              item.graph,
+              item.nodeId,
+              item.event,
+              item.patches
+            );
             item.resolve();
           } catch (err) {
             item.reject(err);
@@ -47,23 +61,34 @@ export function useMidiDispatch({
         drainingMidiDispatchQueueRef.current = false;
       }
     })();
-  }, [graph, onEnsureAudioRunning]);
+  }, []);
 
-  function emitMidi(nodeId: NodeId, event: MidiEvent): Promise<void> {
-    return new Promise<void>((resolve, reject) => {
-      setGraph((g) => {
-        const next = routeMidi(g, nodeId, event);
+  const emitMidi = useCallback(
+    (nodeId: NodeId, event: MidiEvent): Promise<void> => {
+      return new Promise<void>((resolve, reject) => {
+        const currentGraph = graphRef.current;
+        const patches = computeMidiPatches(currentGraph, nodeId, event);
+
+        // Persist CC-derived state changes without creating history entries.
+        if (event.type === "cc") {
+          onPatchNodesEphemeralRef.current?.(patches);
+        }
+
         pendingMidiDispatchQueueRef.current.push({
-          graph: next,
+          graph: currentGraph,
           nodeId,
           event,
+          patches,
           resolve,
           reject,
         });
-        return next;
+
+        // Trigger queue drain
+        drainQueue();
       });
-    });
-  }
+    },
+    [drainQueue]
+  );
 
   return { emitMidi };
 }

@@ -17,6 +17,8 @@
   "license": "ISC",
   "description": "Web Audio PureData-like playground",
   "dependencies": {
+    "@automerge/automerge": "^3.2.1",
+    "@automerge/automerge-repo": "^2.5.1",
     "jszip": "^3.10.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -29,6 +31,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vite-plugin-wasm": "^3.5.0"
   }
 }

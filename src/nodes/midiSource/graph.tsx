@@ -30,6 +30,8 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
   node,
   onPatchNode,
   onEmitMidi,
+  startBatch,
+  endBatch,
 }) => {
   const [isHeld, setIsHeld] = useState(false);
   const activePointerIdRef = useRef<number | null>(null);
@@ -61,10 +63,6 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
               setIsHeld(true);
 
               const atMs = performance.now();
-              onPatchNode(node.id, {
-                isEmitting: true,
-                lastTriggeredAtMs: atMs,
-              });
               await onEmitMidi?.(node.id, {
                 type: "noteOn",
                 note: node.state.note,
@@ -82,7 +80,6 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
               setIsHeld(false);
 
               const atMs = performance.now();
-              onPatchNode(node.id, { isEmitting: false });
               await onEmitMidi?.(node.id, {
                 type: "noteOff",
                 note: node.state.note,
@@ -95,7 +92,6 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
               activePointerIdRef.current = null;
               setIsHeld(false);
               const atMs = performance.now();
-              onPatchNode(node.id, { isEmitting: false });
               void onEmitMidi?.(node.id, {
                 type: "noteOff",
                 note: node.state.note,
@@ -108,7 +104,6 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
               activePointerIdRef.current = null;
               setIsHeld(false);
               const atMs = performance.now();
-              onPatchNode(node.id, { isEmitting: false });
               void onEmitMidi?.(node.id, {
                 type: "noteOff",
                 note: node.state.note,
@@ -130,6 +125,8 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
             label="Note"
             format={(v) => Math.round(v).toString()}
             width={48}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
           <NumericInput
             value={node.state.velocity}
@@ -140,6 +137,8 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
             label="Vel"
             format={(v) => Math.round(v).toString()}
             width={48}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
         </div>
       </div>

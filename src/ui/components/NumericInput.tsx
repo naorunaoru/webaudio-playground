@@ -13,6 +13,10 @@ export interface NumericInputProps extends ContinuousControlProps, BaseControlPr
   onBlur?: () => void;
   /** Auto-focus on mount */
   autoFocus?: boolean;
+  /** Called when drag starts */
+  onDragStart?: () => void;
+  /** Called when drag ends */
+  onDragEnd?: () => void;
 }
 
 /**
@@ -33,6 +37,8 @@ export function NumericInput({
   width = 60,
   onBlur: onBlurProp,
   autoFocus = false,
+  onDragStart,
+  onDragEnd,
 }: NumericInputProps) {
   const { theme, chrome } = useTheme();
   const [editingValue, setEditingValue] = useState<string | null>(null);
@@ -48,7 +54,11 @@ export function NumericInput({
     mode: "step",
     step,
     disabled: disabled || isEditing,
-    onDragStart: () => inputRef.current?.focus(),
+    onDragStart: () => {
+      inputRef.current?.focus();
+      onDragStart?.();
+    },
+    onDragEnd,
   });
 
   // Auto-focus on mount if requested - also enters editing mode with value selected

@@ -13,6 +13,8 @@ export interface KnobProps extends ContinuousControlProps, BaseControlProps {
   indicator?: "arc" | "bipolar" | "catseye" | "pointer";
   format?: (value: number) => string;
   unit?: string;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }
 
 /**
@@ -34,6 +36,8 @@ export function Knob({
   disabled = false,
   format,
   unit,
+  onDragStart,
+  onDragEnd,
 }: KnobProps) {
   const { theme, chrome } = useTheme();
   const [isEditing, setIsEditing] = useState(false);
@@ -45,6 +49,8 @@ export function Knob({
     min,
     max,
     disabled: disabled || isEditing,
+    onDragStart,
+    onDragEnd,
   });
 
   // Format value for display

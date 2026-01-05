@@ -278,7 +278,7 @@ function createLimiterRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInst
       worklet = null;
     },
     getLevel: () => rmsFromAnalyser(meter, meterBuffer),
-    getDebug: () => debug,
+    getRuntimeState: () => debug,
   };
 }
 
