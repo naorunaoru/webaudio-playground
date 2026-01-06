@@ -2,6 +2,28 @@
 
 These components handle user input for editing graph data.
 
+## Editor-Level Selection
+
+The graph editor needs selection primitives that work for node graphs (not just curve editors).
+
+See `docs/ui/editor.md` for the broader editor metaphor list.
+
+### MarqueeSelect
+
+Drag-to-select rectangle that adds/removes nodes from a selection set.
+
+**Use cases:**
+- Select many nodes quickly (Group / Patch workflows).
+- Reduce reliance on shift-click in dense graphs.
+
+### MultiSelect Model
+
+Shared selection state and helpers for “toggle membership”, “clear”, and “replace”.
+
+**Use cases:**
+- Shift-click membership toggling
+- Select group vs select members semantics (later)
+
 ## PointEditor
 
 Enables adding, moving, and deleting points on a curve.
