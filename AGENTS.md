@@ -8,6 +8,8 @@ Architecture and implementation docs are in `docs/`. Keep them current.
 
 ### Key Documentation
 
+- **[PLAN.md](PLAN.md)** — High-level project plan and status (keep it aligned with the current repo state)
+
 - **[docs/ui/](docs/ui/)** — UI component library documentation
   - [roadmap.md](docs/ui/roadmap.md) — Implementation checklist (update when completing components)
   - Component specs, types, hooks, and design guidelines
@@ -23,14 +25,16 @@ When making changes to the codebase:
 
 1. **Check if docs need updating** — If you modify a component's API, behavior, or add new features, update the relevant documentation.
 
-2. **Update the roadmap** — When completing a component or feature listed in [docs/ui/roadmap.md](docs/ui/roadmap.md):
+2. **Update `PLAN.md`** — When you implement, drop, or supersede an item in `PLAN.md`, update its checkbox/status and wording to match reality.
+
+3. **Update the roadmap** — When completing a component or feature listed in [docs/ui/roadmap.md](docs/ui/roadmap.md):
    - Check off the item `[x]`
    - Add file path reference if not present
    - Note any deviations from the original plan
 
-3. **Keep docs accurate** — If implementation differs from documentation, update the docs to reflect reality. Accurate docs > aspirational docs.
+4. **Keep docs accurate** — If implementation differs from documentation, update the docs to reflect reality. Accurate docs > aspirational docs.
 
-4. **New components** — When adding new components:
+5. **New components** — When adding new components:
    - Add to the appropriate doc file (controls.md, primitives.md, etc.)
    - Add to roadmap.md
    - Follow existing patterns and type interfaces
