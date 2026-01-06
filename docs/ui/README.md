@@ -24,6 +24,7 @@ All components share a unified theme system and design language optimized for de
 | [style-guide.md](./style-guide.md) | Visual design guidelines |
 | [primitives.md](./primitives.md) | Grid, Curve, Waveform, Spectrum, Playhead |
 | [interactions.md](./interactions.md) | PointEditor, CurveHandle, RegionSelector, ZoomPan |
+| [editor.md](./editor.md) | Editor-level metaphors (selection, menus, inspector, patch UX) |
 | [composed-components.md](./composed-components.md) | EnvelopeEditor, SamplePlayer, ParametricEQ |
 | [time-base.md](./time-base.md) | Musical vs absolute time |
 | [utilities.md](./utilities.md) | Interpolation, downsampling, performance |

@@ -13,11 +13,10 @@ Status legend: [x] Done | 🚧 Partial | [ ] Planned
   - [x] Undo/redo
   - [x] Import/export projects as `.zip` (graph + embedded samples)
   - [ ] Replace nodes
-  - [ ] Insert nodes
-  - [ ] Combine nodes
+  - [ ] Splice a node into a connection
 - Node module system
   - [x] Plugin-style node folders in `src/nodes/*` (typed state + graph UI + optional audio runtime)
-  - [x] Implemented nodes (see `docs/nodes/node-catalog.md`): `midiSource`, `ccSource`, `oscillator`, `samplePlayer`, `envelope`, `gain`, `filter`, `delay`, `reverb`, `limiter`, `audioOut`
+  - [x] Implemented nodes (see `docs/nodes/node-catalog.md`): `midiSource`, `ccSource`, `midiPitch`, `oscillator`, `pmOscillator`, `pmPhasor`, `pmSin`, `samplePlayer`, `envelope`, `gain`, `filter`, `delay`, `reverb`, `limiter`, `audioOut`
   - [x] MIDI/CC routing through connections (optional state patches via `onMidi`/`onCc`)
 - Audio engine
   - [x] Instantiate/remove audio runtimes based on graph
@@ -33,7 +32,7 @@ Status legend: [x] Done | 🚧 Partial | [ ] Planned
   - [ ] Sample editing UI (trim, normalize, slice)
   - [ ] Sample markers (looping)
 - Funni synths
-  - [ ] FM / OPL-like synth (should possible via subgraph)
+  - 🚧 FM / OPL-like synth (single-voice patching possible; subgraph TBD)
   - [ ] Wavetable synth (hi Serum)
 - Open Sound Control
   - [ ] Consume and parse OSC data from WebSocket connection
@@ -61,25 +60,11 @@ Status legend: [x] Done | 🚧 Partial | [ ] Planned
   - [ ] A way to listen just to a single node's audio output
   - [ ] Debug data input/output (view raw MIDI/OSC events)
 
-## Nested graphs
+## Subgraphs / Patches
 
-Goal: graphs are nestable; each graph has its own inputs/outputs. The top-level graph bridges to the host (audio devices / WebMIDI) and/or hosts sequencers; parent graphs pass streams down into nested graphs.
-
-- [ ] Define a “graph as node” model (subgraph instances)
-  - [ ] Explicit boundary nodes (no implicit forwarding)
-    - [ ] Host to graph I/O mapping is done outside the graph scope
-    - [ ] A graph uses dedicated I/O nodes (e.g. `graphAudioIn`, `graphAudioOut`, `graphMidiIn`, `graphMidiOut`, `graphCcIn`, `graphCcOut`)
-    - [ ] Subgraph node ports are derived from those nodes, and parent wires into/out of them explicitly
-  - [ ] Cycle/feedback policy across boundaries (allow/deny, audio vs event loops)
-- [ ] Define I/O semantics per kind
-  - [ ] Audio: channel format and (future) multichannel strategy
-  - [ ] Events: define `midi` (= notes only), `cc` (= MIDI CC messages), other?
-  - [ ] Timebase: choose canonical time (`AudioContext.currentTime` / sample frames) and conversions
-- [ ] Build navigation + UX for nested graphs
-  - [ ] Enter/exit subgraph, breadcrumb, “edit in place” vs “open in tab”
-  - [ ] Expose subgraph interface ports visually on the subgraph node
-  - [ ] Copy/paste or “promote to subgraph” workflow (select nodes → extract)
-  - [ ] UI for exposing state/controls from a nested graph
+The “nested graphs / subgraph as node” idea is now tracked as design docs:
+- `docs/patch/README.md` — Patch nodes (reusable, instance-local, frozen interface)
+- `docs/group/README.md` — Editor-only grouping (no routing/model changes)
 
 ## Design Decisions
 

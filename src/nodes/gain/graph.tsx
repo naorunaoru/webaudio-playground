@@ -18,19 +18,29 @@ function clamp(v: number, min: number, max: number): number {
 }
 
 function defaultState(): GainNodeGraph["state"] {
-  return { depth: 1 };
+  return { base: 0, depth: 1 };
 }
 
 const GainUi: React.FC<NodeUiProps<GainNodeGraph>> = ({ node, onPatchNode, startBatch, endBatch }) => {
   return (
     <ThemeProvider theme={gainTheme}>
-      <div style={{ display: "flex", justifyContent: "center" }}>
+      <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+        <Knob
+          value={node.state.base}
+          onChange={(v) => onPatchNode(node.id, { base: v })}
+          min={0}
+          max={2}
+          label="Base"
+          format={(v) => v.toFixed(2)}
+          onDragStart={startBatch}
+          onDragEnd={endBatch}
+        />
         <Knob
           value={node.state.depth}
           onChange={(v) => onPatchNode(node.id, { depth: v })}
           min={0}
           max={2}
-          label="Gain"
+          label="CV"
           format={(v) => v.toFixed(2)}
           onDragStart={startBatch}
           onDragEnd={endBatch}
@@ -51,9 +61,11 @@ export const gainGraph: NodeDefinition<GainNodeGraph> = {
   ],
   ui: GainUi,
   normalizeState: (state) => {
-    const s = (state ?? {}) as Partial<GainNodeGraph["state"]>;
+    const s = (state ?? {}) as Partial<GainNodeGraph["state"]> & { gain?: unknown };
     const d = defaultState();
-    return { depth: clamp(s.depth ?? d.depth, 0, 2) };
+    return {
+      base: clamp(s.base ?? d.base, 0, 2),
+      depth: clamp(s.depth ?? d.depth, 0, 2),
+    };
   },
 };
-

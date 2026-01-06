@@ -15,6 +15,7 @@ import type {
   GraphConnection,
   GraphNode,
   GraphState,
+  NodeId,
   Selected,
 } from "./types";
 import { getNodeDef, portKindColor } from "./nodeRegistry";
@@ -65,6 +66,11 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     const [selected, setSelected] = useState<Selected>({ type: "none" });
     const [status, setStatus] = useState<string | null>(null);
+    const [contextMenu, setContextMenu] = useState<{
+      nodeId: NodeId;
+      x: number;
+      y: number;
+    } | null>(null);
 
     const { nodeWidths, registerNodeEl } = useNodeWidths();
     const { levels, runtimeState } = useAudioLevels(audioState);
@@ -85,7 +91,29 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       (from: ConnectionEndpoint, to: ConnectionEndpoint) => {
         if (!graph) return;
 
-        const res = canConnect(graph, from, to);
+        const resolveShellEndpoint = (
+          ep: ConnectionEndpoint
+        ): ConnectionEndpoint => {
+          const n = graph.nodes.find((nn) => nn.id === ep.nodeId);
+          if (!n) return ep;
+          const s = n.state as any;
+          const pitchId =
+            typeof s?.pitchId === "string" ? (s.pitchId as NodeId) : null;
+          const sinId =
+            typeof s?.sinId === "string" ? (s.sinId as NodeId) : null;
+          if (ep.portId === "midi_in" && pitchId)
+            return { nodeId: pitchId, portId: "midi_in" };
+          if (ep.portId === "phase_in" && sinId)
+            return { nodeId: sinId, portId: "phase_in" };
+          if (ep.portId === "audio_out" && sinId)
+            return { nodeId: sinId, portId: "audio_out" };
+          return ep;
+        };
+
+        const resolvedFrom = resolveShellEndpoint(from);
+        const resolvedTo = resolveShellEndpoint(to);
+
+        const res = canConnect(graph, resolvedFrom, resolvedTo);
         if (!res.ok) {
           setStatus(`Cannot connect (${res.reason})`);
           return;
@@ -94,8 +122,8 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         const conn: GraphConnection = {
           id: createId("c"),
           kind: res.kind,
-          from,
-          to,
+          from: resolvedFrom,
+          to: resolvedTo,
         };
 
         addConnection({
@@ -159,15 +187,50 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     const renderCache = useMemo(() => {
       if (!graph) return { nodes: [], connections: [] };
 
-      const nodes = graph.nodes.map((node) => {
-        const def = getNodeDef(node.type);
-        const ports = portMetaForNode(node);
-        const portIndex = new Map<string, number>();
-        for (let i = 0; i < ports.length; i++) portIndex.set(ports[i]!.id, i);
-        const height = nodeHeight(ports.length);
-        const Ui = (def as any).ui as any;
-        return { node, def, ports, portIndex, height, Ui };
-      });
+      const readPmShellState = (node: GraphNode) => {
+        const s = node.state as any;
+        return {
+          pitchId:
+            typeof s?.pitchId === "string" ? (s.pitchId as NodeId) : null,
+          phasorId:
+            typeof s?.phasorId === "string" ? (s.phasorId as NodeId) : null,
+          sinId: typeof s?.sinId === "string" ? (s.sinId as NodeId) : null,
+          collapsed: s?.collapsed === true,
+        };
+      };
+
+      const hidden = new Set<NodeId>();
+      const shellByChild = new Map<
+        NodeId,
+        { shellId: NodeId; role: "pitch" | "phasor" | "sin" }
+      >();
+
+      for (const n of graph.nodes) {
+        const s = readPmShellState(n);
+        if (!s) continue;
+        const shellId = n.id as NodeId;
+        if (s.pitchId) shellByChild.set(s.pitchId, { shellId, role: "pitch" });
+        if (s.phasorId)
+          shellByChild.set(s.phasorId, { shellId, role: "phasor" });
+        if (s.sinId) shellByChild.set(s.sinId, { shellId, role: "sin" });
+        if (s.collapsed) {
+          if (s.pitchId) hidden.add(s.pitchId);
+          if (s.phasorId) hidden.add(s.phasorId);
+          if (s.sinId) hidden.add(s.sinId);
+        }
+      }
+
+      const nodes = graph.nodes
+        .filter((node) => !hidden.has(node.id as NodeId))
+        .map((node) => {
+          const def = getNodeDef(node.type);
+          const ports = portMetaForNode(node);
+          const portIndex = new Map<string, number>();
+          for (let i = 0; i < ports.length; i++) portIndex.set(ports[i]!.id, i);
+          const height = nodeHeight(ports.length);
+          const Ui = (def as any).ui as any;
+          return { node, def, ports, portIndex, height, Ui };
+        });
 
       const nodeById = new Map<string, (typeof nodes)[number]>();
       for (const n of nodes) nodeById.set(n.node.id, n);
@@ -189,14 +252,61 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         return { x, y };
       };
 
+      const mapEndpointForDisplay = (
+        endpoint: ConnectionEndpoint,
+        kind: GraphConnection["kind"],
+        direction: "from" | "to"
+      ): ConnectionEndpoint | null => {
+        const nodeId = endpoint.nodeId as NodeId;
+        if (!hidden.has(nodeId)) return endpoint;
+
+        const owner = shellByChild.get(nodeId);
+        if (!owner) return null;
+
+        if (direction === "to") {
+          if (
+            kind === "midi" &&
+            owner.role === "pitch" &&
+            endpoint.portId === "midi_in"
+          ) {
+            return { nodeId: owner.shellId, portId: "midi_in" };
+          }
+          if (
+            kind === "audio" &&
+            owner.role === "sin" &&
+            endpoint.portId === "phase_in"
+          ) {
+            return { nodeId: owner.shellId, portId: "phase_in" };
+          }
+          return null;
+        }
+
+        if (direction === "from") {
+          if (
+            kind === "audio" &&
+            owner.role === "sin" &&
+            endpoint.portId === "audio_out"
+          ) {
+            return { nodeId: owner.shellId, portId: "audio_out" };
+          }
+          return null;
+        }
+
+        return null;
+      };
+
       const connections = graph.connections
         .map((c) => {
-          const fromNode = nodeById.get(c.from.nodeId);
-          const toNode = nodeById.get(c.to.nodeId);
+          const from = mapEndpointForDisplay(c.from, c.kind, "from");
+          const to = mapEndpointForDisplay(c.to, c.kind, "to");
+          if (!from || !to) return null;
+
+          const fromNode = nodeById.get(from.nodeId);
+          const toNode = nodeById.get(to.nodeId);
           if (!fromNode || !toNode) return null;
 
-          const fromIndex = fromNode.portIndex.get(c.from.portId);
-          const toIndex = toNode.portIndex.get(c.to.portId);
+          const fromIndex = fromNode.portIndex.get(from.portId);
+          const toIndex = toNode.portIndex.get(to.portId);
           if (fromIndex == null || toIndex == null) return null;
 
           const fromPort = fromNode.ports[fromIndex];
@@ -253,6 +363,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         if (e.key === "Escape") {
           setDrag({ type: "none" });
           setSelected({ type: "none" });
+          setContextMenu(null);
         }
       },
       [selected, setDrag, deleteNode, deleteConnection]
@@ -269,7 +380,8 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         const maxZ = zValues.length > 0 ? Math.max(...zValues) : 0;
         const nodeZ = currentZ[nodeId];
         // Skip if node is already on top, or if this is the only node without ordering yet
-        if (nodeZ === maxZ || (nodeZ === undefined && zValues.length === 0)) return;
+        if (nodeZ === maxZ || (nodeZ === undefined && zValues.length === 0))
+          return;
 
         // Calculate new z-index
         let newZ = maxZ + 1;
@@ -291,13 +403,19 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       setSelected({ type: "connection", connectionId });
     }, []);
 
-    const handleFocusRoot = useCallback(() => {
+    const handleFocusRoot = useCallback((_e?: unknown) => {
+      setContextMenu(null);
       rootRef.current?.focus();
     }, []);
 
     if (!graph) {
       return <div className={styles.root}>Loading...</div>;
     }
+
+    const contextNode =
+      contextMenu && graph
+        ? graph.nodes.find((n) => n.id === contextMenu.nodeId) ?? null
+        : null;
 
     return (
       <div
@@ -378,6 +496,9 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                     onEmitMidi={emitMidi}
                     startBatch={startBatch}
                     endBatch={endBatch}
+                    onOpenContextMenu={(nodeId, x, y) => {
+                      setContextMenu({ nodeId, x, y });
+                    }}
                   />
                 );
               })}

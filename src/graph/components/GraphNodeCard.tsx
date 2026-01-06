@@ -41,6 +41,7 @@ export type GraphNodeCardProps = {
   onEmitMidi: (nodeId: NodeId, event: MidiEvent) => Promise<void>;
   startBatch?: () => void;
   endBatch?: () => void;
+  onOpenContextMenu?: (nodeId: NodeId, x: number, y: number) => void;
 };
 
 export function GraphNodeCard({
@@ -65,6 +66,7 @@ export function GraphNodeCard({
   onEmitMidi,
   startBatch,
   endBatch,
+  onOpenContextMenu,
 }: GraphNodeCardProps) {
   const handleHeaderPointerDown = (e: React.PointerEvent) => {
     if (!rootRef.current || !scrollRef.current) return;
@@ -108,6 +110,13 @@ export function GraphNodeCard({
       data-node-id={node.id}
       ref={(el) => onRegisterNodeEl(node.id, el)}
       style={{ left: node.x, top: node.y, zIndex }}
+      onContextMenu={(e) => {
+        if (!onOpenContextMenu) return;
+        e.preventDefault();
+        e.stopPropagation();
+        onSelectNode(node.id);
+        onOpenContextMenu(node.id, e.clientX, e.clientY);
+      }}
       onPointerDown={(e) => {
         e.stopPropagation();
         onSelectNode(node.id);

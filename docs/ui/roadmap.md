@@ -44,6 +44,38 @@ Status: ✅ Done | 🚧 Partial | ⬜ Planned
 
 ---
 
+## Editor Metaphors (Graph UX)
+
+See `docs/ui/editor.md` for design stubs and use cases.
+
+### Selection
+
+- [ ] Multi-select (shift/click) + selection model
+- [ ] Marquee/box selection
+
+### Menus & Overlays
+
+- 🚧 ContextMenu (ad-hoc exists in `src/graph/GraphEditor.tsx`)
+- [ ] Dialog/Modal primitives (confirm, wizard)
+- [ ] Toast/Snackbar for transient status
+
+### Naming
+
+- [ ] Inline rename (node/group/patch names)
+
+### Panels & Navigation
+
+- [ ] Inspector/Detail panel
+- [ ] Command palette
+- [ ] Breadcrumbs / “inside patch” navigation (later)
+
+### Patch UX
+
+- [ ] Combine wizard (preview derived ports + naming conflicts)
+- [ ] Patch library browser (save/instantiate definitions)
+
+---
+
 ## Graph Components
 
 ### Primitives

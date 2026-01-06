@@ -3,11 +3,18 @@ import { GraphEditor, type GraphEditorHandle } from "./graph/GraphEditor";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAudioEngine } from "./audio/engine";
 import type { GraphState, GraphNode } from "./graph/types";
-import { exportProject, downloadBlob, importProject, pickFile } from "./project";
+import {
+  exportProject,
+  downloadBlob,
+  importProject,
+  pickFile,
+} from "./project";
 import { GraphDocProvider, useGraphDoc } from "./state";
 import { createNode } from "./graph/graphUtils";
 
-function readAudioDspLoad(engineRuntimeState: Record<string, unknown>): number | null {
+function readAudioDspLoad(
+  engineRuntimeState: Record<string, unknown>
+): number | null {
   let max = 0;
   let any = false;
   for (const v of Object.values(engineRuntimeState)) {
@@ -35,7 +42,9 @@ function AppContent() {
 
   const graphEditorRef = useRef<GraphEditorHandle | null>(null);
   const didAutoStartRef = useRef(false);
-  const [audioState, setAudioState] = useState<AudioContextState | "off">("off");
+  const [audioState, setAudioState] = useState<AudioContextState | "off">(
+    "off"
+  );
   const [dspLoad, setDspLoad] = useState<number | null>(null);
 
   const ensureAudioRunning = useCallback(async (graph: GraphState | null) => {
@@ -68,7 +77,11 @@ function AppContent() {
     window.addEventListener("pointerdown", onFirstInteraction, pointerOptions);
     window.addEventListener("keydown", onFirstInteraction, keyOptions);
     return () => {
-      window.removeEventListener("pointerdown", onFirstInteraction, pointerOptions);
+      window.removeEventListener(
+        "pointerdown",
+        onFirstInteraction,
+        pointerOptions
+      );
       window.removeEventListener("keydown", onFirstInteraction, keyOptions);
     };
   }, [ensureAudioRunning, graphState]);
@@ -172,7 +185,11 @@ function AppContent() {
             </option>
             <option value="midiSource">MIDI Source</option>
             <option value="ccSource">CC Source</option>
+            <option value="midiPitch">MIDI Pitch</option>
             <option value="oscillator">Oscillator</option>
+            <option value="pmOscillator">PM Osc</option>
+            <option value="pmPhasor">Phasor</option>
+            <option value="pmSin">Sin</option>
             <option value="envelope">Envelope</option>
             <option value="gain">Gain</option>
             <option value="filter">Filter</option>
@@ -237,7 +254,8 @@ function AppContent() {
             onClick={async () => {
               const engine = getAudioEngine();
               const next = await engine.toggleRunning();
-              if (next === "running" && graphState) engine.syncGraph(graphState);
+              if (next === "running" && graphState)
+                engine.syncGraph(graphState);
               setAudioState(next);
             }}
           >

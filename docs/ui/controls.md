@@ -225,6 +225,22 @@ interface ButtonProps extends BaseControlProps {
 }
 ```
 
+---
+
+## Editor Controls (Non-Audio)
+
+These aren’t “audio parameter controls” but are frequently needed in node-graph editors.
+
+### InlineRename
+
+Inline text editing for titles (click-to-edit, Enter/Escape, blur to commit/cancel).
+
+**Use cases:**
+- Node display names (“Oscillator 1”)
+- Group names
+- Patch instance and patch definition names
+
+
 **Modes:**
 - `trigger`: fires once per click, visual blip feedback
 - `momentary`: fires on press or release (configurable)

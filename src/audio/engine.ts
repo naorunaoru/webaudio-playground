@@ -15,6 +15,7 @@ export class AudioEngine {
   private masterMeterBuffer: Float32Array<ArrayBufferLike> | null = null;
   private audioNodes = new Map<NodeId, AudioNodeInstance<any>>();
   private outputNodeIds = new Set<NodeId>();
+  private connectedFromKeys = new Set<string>();
   private factories: AudioNodeFactoryMap | null = null;
   private factoryOverrides: AudioNodeFactoryMap = {};
   private loadedWorkletModules = new Set<string>();
@@ -122,6 +123,12 @@ export class AudioEngine {
     if (!factories) return;
 
     const alive = new Set<NodeId>(graph.nodes.map((n) => n.id));
+    // Prune stale connection keys for removed nodes.
+    for (const key of this.connectedFromKeys) {
+      const nodeId = key.slice(0, key.indexOf(":"));
+      if (!alive.has(nodeId)) this.connectedFromKeys.delete(key);
+    }
+
     for (const [nodeId] of this.audioNodes) {
       if (!alive.has(nodeId)) {
         this.teardownNode(nodeId);
@@ -141,16 +148,31 @@ export class AudioEngine {
       this.audioNodes.get(node.id)?.updateState(node.state as any);
     }
 
-    const disconnected = new Set<string>();
+    const nextFromKeys = new Set<string>();
     for (const conn of graph.connections) {
       if (conn.kind !== "audio" && conn.kind !== "automation") continue;
-      const from = this.audioNodes.get(conn.from.nodeId);
-      if (!from?.getAudioOutput) continue;
-      const key = `${conn.from.nodeId}:${conn.from.portId}`;
+      nextFromKeys.add(`${conn.from.nodeId}:${conn.from.portId}`);
+    }
+
+    const disconnected = new Set<string>();
+    for (const key of new Set([...this.connectedFromKeys, ...nextFromKeys])) {
       if (disconnected.has(key)) continue;
       disconnected.add(key);
-      from.getAudioOutput(conn.from.portId)?.disconnect();
+
+      const idx = key.indexOf(":");
+      if (idx <= 0) continue;
+      const nodeId = key.slice(0, idx) as NodeId;
+      const portId = key.slice(idx + 1);
+
+      const from = this.audioNodes.get(nodeId);
+      if (!from?.getAudioOutput) continue;
+      try {
+        from.getAudioOutput(portId)?.disconnect();
+      } catch {
+        // ignore
+      }
     }
+    this.connectedFromKeys = nextFromKeys;
 
     for (const conn of graph.connections) {
       if (conn.kind !== "audio" && conn.kind !== "automation") continue;
