@@ -10,8 +10,15 @@ import {
 import { type DocHandle } from "@automerge/automerge-repo";
 import * as Automerge from "@automerge/automerge";
 import type { GraphDoc, DocConnection } from "./types";
-import type { GraphState, NodeId, ConnectionId, GraphNode } from "../graph/types";
+import type {
+  GraphState,
+  NodeId,
+  ConnectionId,
+  GraphNode,
+} from "../graph/types";
 import { docToGraphState, graphStateToDoc } from "./converters";
+import { normalizeGraph } from "../graph/graphUtils";
+import { createId } from "../graph/id";
 import {
   getRepo,
   getOrCreateMainDocument,
@@ -76,7 +83,9 @@ type GraphDocContextValue = {
 
   /** Ephemeral mutations (no history) - for transient state like MIDI triggers, playhead */
   patchNodeEphemeral: (nodeId: NodeId, patch: Record<string, unknown>) => void;
-  patchMultipleNodesEphemeral: (patches: Map<NodeId, Record<string, unknown>>) => void;
+  patchMultipleNodesEphemeral: (
+    patches: Map<NodeId, Record<string, unknown>>
+  ) => void;
 
   /** Batch operations for continuous changes (sliders, drags) */
   startBatch: () => void;
@@ -124,7 +133,7 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       // Initial state
       const doc = docHandle.doc();
       if (doc) {
-        setGraphState(docToGraphState(doc));
+        setGraphState(normalizeGraph(docToGraphState(doc)));
       }
 
       setIsLoading(false);
@@ -133,7 +142,7 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       const onChange = () => {
         const doc = docHandle.doc();
         if (doc) {
-          setGraphState(docToGraphState(doc));
+          setGraphState(normalizeGraph(docToGraphState(doc)));
         }
       };
 
@@ -241,13 +250,20 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       saveBeforeMutation(`Delete ${nodeType}`);
 
       handle.change((doc) => {
-        delete doc.nodes[nodeId];
-        delete doc.nodeZOrder[nodeId];
+        const cascade: NodeId[] = [nodeId];
+
+        for (const id of cascade) {
+          delete doc.nodes[id];
+          delete doc.nodeZOrder[id];
+        }
 
         // Remove connections referencing this node
         for (const connId of Object.keys(doc.connections)) {
           const conn = doc.connections[connId];
-          if (conn.from.nodeId === nodeId || conn.to.nodeId === nodeId) {
+          if (
+            cascade.includes(conn.from.nodeId) ||
+            cascade.includes(conn.to.nodeId)
+          ) {
             delete doc.connections[connId];
           }
         }
@@ -279,10 +295,12 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
   const patchMultipleNodes = useCallback(
     (patches: Map<NodeId, Record<string, unknown>>) => {
       if (!handle || patches.size === 0) return;
-      const descriptions = Array.from(patches.entries()).map(([nodeId, patch]) => {
-        const nodeType = getNodeType(nodeId);
-        return formatPatchDescription(nodeType, patch);
-      });
+      const descriptions = Array.from(patches.entries()).map(
+        ([nodeId, patch]) => {
+          const nodeType = getNodeType(nodeId);
+          return formatPatchDescription(nodeType, patch);
+        }
+      );
       saveBeforeMutation(descriptions.join("; "));
 
       handle.change((doc) => {
@@ -388,8 +406,10 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       const snapshotBinary = batchSnapshotRef.current;
 
       // Compare binaries - if they're different, something changed
-      if (currentBinary.length !== snapshotBinary.length ||
-          !currentBinary.every((byte, i) => byte === snapshotBinary[i])) {
+      if (
+        currentBinary.length !== snapshotBinary.length ||
+        !currentBinary.every((byte, i) => byte === snapshotBinary[i])
+      ) {
         const description = batchDescriptionRef.current ?? "Batch change";
         pushUndo(snapshotBinary, description);
       }
@@ -414,7 +434,14 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     // Save current state to redo stack (with the description of what we're undoing)
     const currentBinary = Automerge.save(doc);
     console.log(`[History] Undo: ${entry.description}`);
-    setRedoStack((prev) => [...prev, { binary: currentBinary, timestamp: Date.now(), description: entry.description }]);
+    setRedoStack((prev) => [
+      ...prev,
+      {
+        binary: currentBinary,
+        timestamp: Date.now(),
+        description: entry.description,
+      },
+    ]);
 
     const restoredDoc = Automerge.load<GraphDoc>(entry.binary);
 
@@ -458,7 +485,14 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     // Save current state to undo stack (with the description of what we're redoing)
     const currentBinary = Automerge.save(doc);
     console.log(`[History] Redo: ${entry.description}`);
-    setUndoStack((prev) => [...prev, { binary: currentBinary, timestamp: Date.now(), description: entry.description }]);
+    setUndoStack((prev) => [
+      ...prev,
+      {
+        binary: currentBinary,
+        timestamp: Date.now(),
+        description: entry.description,
+      },
+    ]);
 
     const restoredDoc = Automerge.load<GraphDoc>(entry.binary);
 
@@ -501,7 +535,7 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
 
     const doc = newHandle.doc();
     if (doc) {
-      setGraphState(docToGraphState(doc));
+      setGraphState(normalizeGraph(docToGraphState(doc)));
     }
   }, []);
 
@@ -515,7 +549,7 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     setRedoStack([]);
 
     setHandle(newHandle);
-    setGraphState(graph);
+    setGraphState(normalizeGraph(graph));
   }, []);
 
   const value: GraphDocContextValue = {

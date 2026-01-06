@@ -5,7 +5,6 @@ import { ccSourceNode } from "./ccSource";
 import { midiPitchNode } from "./midiPitch";
 import { oscillatorNode } from "./oscillator";
 import { pmOscillatorNode } from "./pmOscillator";
-import { pmOscShellNode } from "./pmOscShell";
 import { pmPhasorNode } from "./pmPhasor";
 import { pmSinNode } from "./pmSin";
 import { envelopeNode } from "./envelope";
@@ -23,7 +22,6 @@ export const NODE_MODULES = {
   midiPitch: midiPitchNode,
   oscillator: oscillatorNode,
   pmOscillator: pmOscillatorNode,
-  pmOscShell: pmOscShellNode,
   pmPhasor: pmPhasorNode,
   pmSin: pmSinNode,
   envelope: envelopeNode,

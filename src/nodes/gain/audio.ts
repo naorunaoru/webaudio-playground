@@ -25,9 +25,17 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
   const vca = ctx.createGain();
   vca.gain.value = 0;
 
-  const cv = ctx.createGain();
-  cv.gain.value = 1;
-  cv.connect(vca.gain);
+  const base = ctx.createConstantSource();
+  base.offset.value = 0;
+  base.connect(vca.gain);
+  base.start();
+
+  const cvIn = ctx.createGain();
+  cvIn.gain.value = 1;
+  const cvAmount = ctx.createGain();
+  cvAmount.gain.value = 1;
+  cvIn.connect(cvAmount);
+  cvAmount.connect(vca.gain);
 
   const meter = ctx.createAnalyser();
   meter.fftSize = 256;
@@ -41,11 +49,12 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
     type: "gain",
     updateState: (state) => {
       const now = ctx.currentTime;
-      cv.gain.setTargetAtTime(clamp(state.depth, 0, 2), now, 0.02);
+      base.offset.setTargetAtTime(clamp(state.base, 0, 2), now, 0.02);
+      cvAmount.gain.setTargetAtTime(clamp(state.depth, 0, 2), now, 0.02);
     },
     getAudioInput: (portId) => {
       if (portId === "audio_in") return input;
-      if (portId === "gain_in") return cv;
+      if (portId === "gain_in") return cvIn;
       return null;
     },
     getAudioOutput: (portId) => {
@@ -57,7 +66,22 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
       vca.disconnect();
       input.disconnect();
       try {
-        cv.disconnect();
+        cvAmount.disconnect();
+      } catch {
+        // ignore
+      }
+      try {
+        cvIn.disconnect();
+      } catch {
+        // ignore
+      }
+      try {
+        base.disconnect();
+      } catch {
+        // ignore
+      }
+      try {
+        base.stop();
       } catch {
         // ignore
       }
@@ -72,4 +96,3 @@ export function gainAudioFactory(_services: AudioNodeServices): AudioNodeFactory
     create: (ctx, nodeId) => createGainRuntime(ctx, nodeId),
   };
 }
-

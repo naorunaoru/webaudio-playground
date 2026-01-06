@@ -38,6 +38,27 @@ Control Change message source.
 
 ---
 
+### midiPitch
+
+Converts MIDI note events into pitch/control signals (CV).
+
+| Property | Type | Range | Default |
+|----------|------|-------|---------|
+| `ratio` | number | 0.25-16 | 1 |
+| `detuneCents` | number | -1200 to 1200 | 0 |
+| `glideMs` | number | 0-5000 | 0 |
+| `a4Hz` | number | 200-1000 | 440 |
+
+**Ports:**
+- `midi_in` (midi, in) — Note events
+- `hz_out` (automation, out) — Frequency in Hz
+- `vel_out` (automation, out) — Velocity (0..1)
+- `gate_out` (automation, out) — Gate (0 or 1)
+
+**Audio:** ConstantSourceNodes (Hz/Vel/Gate)
+
+---
+
 ## Sound Generators
 
 ### oscillator
@@ -54,6 +75,26 @@ Audio oscillator with waveform selection or noise source.
 - `audio_out` (audio, out) — Audio signal
 
 **Audio:** OscillatorNode or BufferSourceNode (noise)
+
+---
+
+### pmOscillator
+
+Phase-modulated sine oscillator (OPL-ish building block) using AudioWorklet.
+
+| Property | Type | Range | Default |
+|----------|------|-------|---------|
+| `ratio` | number | 0.25-16 | 1 |
+| `detuneCents` | number | -1200 to 1200 | 0 |
+| `feedback` | number | 0-1 | 0 |
+| `resetPhaseOnNoteOn` | boolean | — | `true` |
+
+**Ports:**
+- `midi_in` (midi, in) — Note pitch control
+- `phase_in` (audio, in) — Phase modulation input (radians; summed)
+- `audio_out` (audio, out) — Audio signal
+
+**Audio:** AudioWorkletNode (sine oscillator with phase modulation)
 
 ---
 
@@ -99,11 +140,44 @@ ADSR envelope generator with shaped curves.
 
 **Ports:**
 - `midi_in` (midi, in) — Trigger envelope
-- `cv_out` (automation, out) — Envelope CV signal
+- `env_out` (automation, out) — Envelope CV signal
 
 **Audio:** ConstantSourceNode + GainNode with scheduled curves
 
-**Runtime State:** `{ phase: "idle" | "attack" | "decay" | "sustain" | "release" }`
+**Runtime State:** `{ lastMidiAtMs: number | null, lastMidiOffAtMs: number | null }`
+
+---
+
+### pmPhasor
+
+Phase accumulator (`phasor~`-like). Outputs a 0..2π ramp (radians) driven by an incoming frequency signal.
+
+| Property | Type | Range | Default |
+|----------|------|-------|---------|
+| `resetThreshold` | number | 0-1 | 0.5 |
+
+**Ports:**
+- `freq_in` (automation, in) — Frequency in Hz
+- `reset_in` (automation, in) — Reset trigger (rising edge; compare vs threshold)
+- `phase_out` (audio, out) — Phase (radians)
+
+**Audio:** AudioWorkletNode
+
+---
+
+### pmSin
+
+Sine function (`sin~`-like). Converts an incoming phase signal (radians) into audio, with optional internal feedback.
+
+| Property | Type | Range | Default |
+|----------|------|-------|---------|
+| `feedback` | number | 0-1 | 0 |
+
+**Ports:**
+- `phase_in` (audio, in) — Phase input (radians); multiple inputs sum
+- `audio_out` (audio, out) — Audio output
+
+**Audio:** AudioWorkletNode
 
 ---
 
@@ -115,11 +189,12 @@ VCA (Voltage Controlled Amplifier) with CV input.
 
 | Property | Type | Range | Default |
 |----------|------|-------|---------|
+| `base` | number | 0-2 | 0 |
 | `depth` | number | 0-2 | 1 |
 
 **Ports:**
 - `audio_in` (audio, in) — Audio input
-- `cv_in` (automation, in) — Gain CV modulation
+- `gain_in` (automation, in) — Gain CV modulation
 - `audio_out` (audio, out) — Audio output
 
 **Audio:** GainNode
@@ -139,7 +214,7 @@ Biquad filter with envelope modulation input.
 
 **Ports:**
 - `audio_in` (audio, in) — Audio input
-- `cv_freq` (automation, in) — Frequency CV modulation
+- `freq_in` (automation, in) — Frequency CV modulation
 - `audio_out` (audio, out) — Audio output
 
 **Audio:** BiquadFilterNode

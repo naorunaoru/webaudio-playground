@@ -16,7 +16,7 @@ Status legend: [x] Done | 🚧 Partial | [ ] Planned
   - [ ] Splice a node into a connection
 - Node module system
   - [x] Plugin-style node folders in `src/nodes/*` (typed state + graph UI + optional audio runtime)
-  - [x] Implemented nodes (see `docs/nodes/node-catalog.md`): `midiSource`, `ccSource`, `oscillator`, `samplePlayer`, `envelope`, `gain`, `filter`, `delay`, `reverb`, `limiter`, `audioOut`
+  - [x] Implemented nodes (see `docs/nodes/node-catalog.md`): `midiSource`, `ccSource`, `midiPitch`, `oscillator`, `pmOscillator`, `pmPhasor`, `pmSin`, `samplePlayer`, `envelope`, `gain`, `filter`, `delay`, `reverb`, `limiter`, `audioOut`
   - [x] MIDI/CC routing through connections (optional state patches via `onMidi`/`onCc`)
 - Audio engine
   - [x] Instantiate/remove audio runtimes based on graph
@@ -32,7 +32,7 @@ Status legend: [x] Done | 🚧 Partial | [ ] Planned
   - [ ] Sample editing UI (trim, normalize, slice)
   - [ ] Sample markers (looping)
 - Funni synths
-  - [ ] FM / OPL-like synth (should possible via subgraph)
+  - 🚧 FM / OPL-like synth (single-voice patching possible; subgraph TBD)
   - [ ] Wavetable synth (hi Serum)
 - Open Sound Control
   - [ ] Consume and parse OSC data from WebSocket connection
