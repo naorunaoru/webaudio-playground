@@ -20,9 +20,7 @@ import type {
 import { getNodeDef, portKindColor } from "./nodeRegistry";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
 import { bezierPath } from "./coordinates";
-import { canConnect, createNode, portMetaForNode } from "./graphUtils";
-import { initialGraph } from "./initialGraph";
-import { loadGraphFromStorage, saveGraphToStorage } from "./graphStorage";
+import { canConnect, portMetaForNode } from "./graphUtils";
 import {
   useAudioLevels,
   useDragInteraction,
@@ -36,73 +34,80 @@ import {
   GraphNodeCard,
 } from "./components";
 import { createId } from "./id";
+import { useGraphDoc } from "../state";
 
 export type GraphEditorProps = Readonly<{
   audioState: AudioContextState | "off";
-  onGraphChange?: (graph: GraphState) => void;
   onEnsureAudioRunning?: (graph: GraphState) => Promise<void>;
 }>;
 
 export type GraphEditorHandle = Readonly<{
-  addNode: (type: GraphNode["type"]) => void;
-  getGraph: () => GraphState;
-  setGraph: (graph: GraphState) => void;
-  resetGraph: () => void;
+  focus: () => void;
 }>;
 
 export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
-  function GraphEditor(
-    { audioState, onGraphChange, onEnsureAudioRunning },
-    ref
-  ) {
+  function GraphEditor({ audioState, onEnsureAudioRunning }, ref) {
     const rootRef = useRef<HTMLDivElement | null>(null);
     const scrollRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
-    const [graph, setGraph] = useState<GraphState>(
-      () => loadGraphFromStorage() ?? initialGraph()
-    );
+    const {
+      graphState: graph,
+      moveNode,
+      deleteNode,
+      patchNode,
+      patchMultipleNodesEphemeral,
+      addConnection,
+      deleteConnection,
+      setZOrder,
+      startBatch,
+      endBatch,
+    } = useGraphDoc();
+
     const [selected, setSelected] = useState<Selected>({ type: "none" });
     const [status, setStatus] = useState<string | null>(null);
 
     const { nodeWidths, registerNodeEl } = useNodeWidths();
-    const { levels, debug } = useAudioLevels(audioState);
+    const { levels, runtimeState } = useAudioLevels(audioState);
     const { emitMidi } = useMidiDispatch({
-      graph,
-      setGraph,
+      graph: graph!,
       onEnsureAudioRunning,
+      onPatchNodesEphemeral: patchMultipleNodesEphemeral,
     });
 
     const handleMoveNode = useCallback(
       (nodeId: string, x: number, y: number) => {
-        setGraph((g) => ({
-          ...g,
-          nodes: g.nodes.map((n) =>
-            n.id === nodeId ? ({ ...n, x, y } as GraphNode) : n
-          ),
-        }));
+        moveNode(nodeId, x, y);
       },
-      []
+      [moveNode]
     );
 
     const handleConnect = useCallback(
       (from: ConnectionEndpoint, to: ConnectionEndpoint) => {
-        setGraph((g) => {
-          const res = canConnect(g, from, to);
-          if (!res.ok) {
-            setStatus(`Cannot connect (${res.reason})`);
-            return g;
-          }
-          const conn: GraphConnection = {
-            id: createId("c"),
-            kind: res.kind,
-            from,
-            to,
-          };
-          setStatus(`Connected ${res.kind}`);
-          return { ...g, connections: [...g.connections, conn] };
+        if (!graph) return;
+
+        const res = canConnect(graph, from, to);
+        if (!res.ok) {
+          setStatus(`Cannot connect (${res.reason})`);
+          return;
+        }
+
+        const conn: GraphConnection = {
+          id: createId("c"),
+          kind: res.kind,
+          from,
+          to,
+        };
+
+        addConnection({
+          id: conn.id,
+          kind: conn.kind,
+          from: conn.from,
+          to: conn.to,
         });
+
+        setStatus(`Connected ${res.kind}`);
       },
-      []
+      [graph, addConnection]
     );
 
     const { drag, setDrag } = useDragInteraction({
@@ -110,6 +115,8 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       scrollRef,
       onMoveNode: handleMoveNode,
       onConnect: handleConnect,
+      onDragStart: startBatch,
+      onDragEnd: endBatch,
     });
 
     // Scroll tracking
@@ -126,44 +133,13 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       return () => root.removeEventListener("scroll", onScroll);
     }, []);
 
-    // Notify parent of graph changes
-    useEffect(() => {
-      onGraphChange?.(graph);
-    }, [graph, onGraphChange]);
-
-    // Persist to localStorage
-    useEffect(() => {
-      saveGraphToStorage(graph);
-    }, [graph]);
-
     // Imperative handle for parent
     useImperativeHandle(
       ref,
       () => ({
-        addNode: (type) => {
-          const root = rootRef.current;
-          const rect = root?.getBoundingClientRect();
-          const s = scrollRef.current;
-          const baseX = rect ? s.x + rect.width * 0.5 : 240;
-          const baseY = rect ? s.y + rect.height * 0.5 : 200;
-          const jitterX = (Math.random() - 0.5) * 120;
-          const jitterY = (Math.random() - 0.5) * 120;
-          const node = createNode(
-            type,
-            Math.max(20, baseX + jitterX),
-            Math.max(20, baseY + jitterY)
-          );
-          setGraph((g) => ({ ...g, nodes: [...g.nodes, node] }));
-        },
-        getGraph: () => graph,
-        setGraph: (newGraph: GraphState) => {
-          setGraph(newGraph);
-        },
-        resetGraph: () => {
-          setGraph(initialGraph());
-        },
+        focus: () => rootRef.current?.focus(),
       }),
-      [graph]
+      []
     );
 
     // Auto-clear status
@@ -175,12 +151,14 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     // Sync graph with audio engine
     useEffect(() => {
-      if (audioState === "off") return;
+      if (audioState === "off" || !graph) return;
       getAudioEngine().syncGraph(graph);
     }, [graph, audioState]);
 
     // Build render cache
     const renderCache = useMemo(() => {
+      if (!graph) return { nodes: [], connections: [] };
+
       const nodes = graph.nodes.map((node) => {
         const def = getNodeDef(node.type);
         const ports = portMetaForNode(node);
@@ -238,6 +216,8 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     }, [graph, nodeWidths]);
 
     const worldSize = useMemo(() => {
+      if (!graph) return { width: 2400, height: 1600 };
+
       let maxX = 0;
       let maxY = 0;
       for (const n of graph.nodes) {
@@ -248,40 +228,25 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         width: Math.max(2400, Math.ceil(maxX + 1200)),
         height: Math.max(1600, Math.ceil(maxY + 1200)),
       };
-    }, [graph.nodes, nodeWidths]);
+    }, [graph, nodeWidths]);
 
-    const patchNode = useCallback((nodeId: string, patch: Partial<any>) => {
-      setGraph((g) => ({
-        ...g,
-        nodes: g.nodes.map((n) =>
-          n.id === nodeId
-            ? ({ ...n, state: { ...n.state, ...patch } } as GraphNode)
-            : n
-        ),
-      }));
-    }, []);
+    const handlePatchNode = useCallback(
+      (nodeId: string, patch: Partial<any>) => {
+        patchNode(nodeId, patch as Record<string, unknown>);
+      },
+      [patchNode]
+    );
 
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent) => {
         if (e.key === "Backspace" || e.key === "Delete") {
           if (selected.type === "node") {
-            const id = selected.nodeId;
-            setGraph((g) => ({
-              ...g,
-              nodes: g.nodes.filter((n) => n.id !== id),
-              connections: g.connections.filter(
-                (c) => c.from.nodeId !== id && c.to.nodeId !== id
-              ),
-            }));
+            deleteNode(selected.nodeId);
             setSelected({ type: "none" });
             return;
           }
           if (selected.type === "connection") {
-            const id = selected.connectionId;
-            setGraph((g) => ({
-              ...g,
-              connections: g.connections.filter((c) => c.id !== id),
-            }));
+            deleteConnection(selected.connectionId);
             setSelected({ type: "none" });
           }
         }
@@ -290,32 +255,37 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           setSelected({ type: "none" });
         }
       },
-      [selected, setDrag]
+      [selected, setDrag, deleteNode, deleteConnection]
     );
 
-    const handleSelectNode = useCallback((nodeId: string) => {
-      setSelected({ type: "node", nodeId });
-      setGraph((g) => {
-        const currentZ = g.nodeZOrder ?? {};
-        const maxZ = Math.max(0, ...Object.values(currentZ));
-        if (currentZ[nodeId] === maxZ) return g; // Already on top
+    const handleSelectNode = useCallback(
+      (nodeId: string) => {
+        setSelected({ type: "node", nodeId });
+
+        if (!graph) return;
+
+        const currentZ = graph.nodeZOrder ?? {};
+        const zValues = Object.values(currentZ);
+        const maxZ = zValues.length > 0 ? Math.max(...zValues) : 0;
+        const nodeZ = currentZ[nodeId];
+        // Skip if node is already on top, or if this is the only node without ordering yet
+        if (nodeZ === maxZ || (nodeZ === undefined && zValues.length === 0)) return;
+
+        // Calculate new z-index
+        let newZ = maxZ + 1;
 
         // Normalize if z-indices are getting too large
-        if (maxZ > g.nodes.length * 2) {
+        if (maxZ > graph.nodes.length * 2) {
           const sorted = Object.entries(currentZ)
             .filter(([id]) => id !== nodeId)
             .sort((a, b) => a[1] - b[1]);
-          const normalized: Record<string, number> = {};
-          sorted.forEach(([id], i) => {
-            normalized[id] = i + 1;
-          });
-          normalized[nodeId] = sorted.length + 1;
-          return { ...g, nodeZOrder: normalized };
+          newZ = sorted.length + 1;
         }
 
-        return { ...g, nodeZOrder: { ...currentZ, [nodeId]: maxZ + 1 } };
-      });
-    }, []);
+        setZOrder(nodeId, newZ);
+      },
+      [graph, setZOrder]
+    );
 
     const handleSelectConnection = useCallback((connectionId: string) => {
       setSelected({ type: "connection", connectionId });
@@ -324,6 +294,10 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     const handleFocusRoot = useCallback(() => {
       rootRef.current?.focus();
     }, []);
+
+    if (!graph) {
+      return <div className={styles.root}>Loading...</div>;
+    }
 
     return (
       <div
@@ -394,14 +368,16 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                     meterOpacity={meterOpacity}
                     midiVisible={midiVisible}
                     Ui={Ui}
-                    debug={debug[node.id]}
+                    runtimeState={runtimeState[node.id]}
                     rootRef={rootRef}
                     scrollRef={scrollRef}
                     onRegisterNodeEl={registerNodeEl}
                     onSelectNode={handleSelectNode}
                     onStartDrag={setDrag}
-                    onPatchNode={patchNode}
+                    onPatchNode={handlePatchNode}
                     onEmitMidi={emitMidi}
+                    startBatch={startBatch}
+                    endBatch={endBatch}
                   />
                 );
               })}

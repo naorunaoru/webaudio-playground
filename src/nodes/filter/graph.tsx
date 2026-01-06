@@ -38,7 +38,7 @@ const typeOptions: OptionDef<FilterType>[] = [
   { value: "highpass", content: <FilterTypeIcon type="highpass" />, ariaLabel: "Highpass" },
 ];
 
-const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode }) => {
+const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode, startBatch, endBatch }) => {
   const nyquist = 22050; // UI clamp only; audio runtime clamps to actual nyquist.
   const freqHz = clamp(node.state.frequencyHz, 20, nyquist);
   const q = clamp(node.state.q, 0.0001, 30);
@@ -60,6 +60,8 @@ const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode })
             label="Freq"
             format={(v) => Math.round(v).toString()}
             unit="Hz"
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
           <Knob
             value={q}
@@ -68,6 +70,8 @@ const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode })
             max={30}
             label="Q"
             format={(v) => v.toFixed(2)}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
           <Knob
             value={envAmountHz}
@@ -77,6 +81,8 @@ const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode })
             label="Env"
             format={(v) => Math.round(v).toString()}
             unit="Hz"
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
         </div>
       </div>

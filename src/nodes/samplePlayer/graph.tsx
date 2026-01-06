@@ -22,12 +22,12 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({ node, onPatchNode, debug }) => {
+const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({ node, onPatchNode, runtimeState }) => {
   const [library, setLibrary] = useState<ReadonlyArray<StoredSample>>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const debugError = (debug as any)?.error as string | null | undefined;
+  const debugError = (runtimeState as any)?.error as string | null | undefined;
 
   const currentLabel = useMemo(() => {
     if (!node.state.sampleId) return "(none)";
@@ -216,4 +216,3 @@ export const samplePlayerGraph: NodeDefinition<SamplePlayerNode> = {
     };
   },
 };
-

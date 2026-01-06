@@ -1,4 +1,3 @@
-export { useGraphPersistence } from "./useGraphPersistence";
 export { useDragInteraction } from "./useDragInteraction";
 export { useNodeWidths } from "./useNodeWidths";
 export { useMidiDispatch } from "./useMidiDispatch";

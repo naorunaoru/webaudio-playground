@@ -21,7 +21,7 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode }) => {
+const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode, startBatch, endBatch }) => {
   const delayMs = clamp(node.state.delayMs, 0, 5000);
   const feedback = clamp(node.state.feedback, 0, 0.98);
   const mix = clamp(node.state.mix, 0, 1);
@@ -37,6 +37,8 @@ const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode }) => {
           label="Time"
           format={(v) => Math.round(v).toString()}
           unit="ms"
+          onDragStart={startBatch}
+          onDragEnd={endBatch}
         />
         <Knob
           value={feedback}
@@ -45,6 +47,8 @@ const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode }) => {
           max={0.98}
           label="Feedback"
           format={(v) => `${Math.round(v * 100)}%`}
+          onDragStart={startBatch}
+          onDragEnd={endBatch}
         />
         <Knob
           value={mix}
@@ -53,6 +57,8 @@ const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode }) => {
           max={1}
           label="Mix"
           format={(v) => `${Math.round(v * 100)}%`}
+          onDragStart={startBatch}
+          onDragEnd={endBatch}
         />
       </div>
     </ThemeProvider>

@@ -30,14 +30,14 @@ function isLimiterDebug(v: unknown): v is LimiterDebug {
   return !!v && typeof v === "object";
 }
 
-const LimiterUi: React.FC<NodeUiProps<LimiterNode>> = ({ node, onPatchNode, debug }) => {
+const LimiterUi: React.FC<NodeUiProps<LimiterNode>> = ({ node, onPatchNode, runtimeState }) => {
   const ceilingDb = clamp(node.state.ceilingDb, -60, 0);
   const releaseMs = clamp(node.state.releaseMs, 1, 5000);
   const makeupDb = clamp(node.state.makeupDb, -24, 24);
   const stereoLink = !!node.state.stereoLink;
   const bypass = !!node.state.bypass;
   const channelCount = node.state.channelCount === 1 ? 1 : 2;
-  const d = isLimiterDebug(debug) ? debug : null;
+  const d = isLimiterDebug(runtimeState) ? runtimeState : null;
 
   return (
     <div style={{ display: "grid", gap: 10 }}>

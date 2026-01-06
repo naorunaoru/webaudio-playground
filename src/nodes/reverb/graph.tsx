@@ -30,7 +30,7 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode }) => {
+const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode, startBatch, endBatch }) => {
   const seconds = clamp(node.state.seconds, 0.1, 10);
   const decay = clamp(node.state.decay, 0.1, 20);
   const preDelayMs = clamp(node.state.preDelayMs, 0, 1000);
@@ -48,6 +48,8 @@ const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode }) => {
             max={1}
             label="Mix"
             format={(v) => `${Math.round(v * 100)}%`}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
           <Knob
             value={seconds}
@@ -56,6 +58,8 @@ const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode }) => {
             max={10}
             label="Time"
             unit="s"
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
           <Knob
             value={decay}
@@ -63,6 +67,8 @@ const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode }) => {
             min={0.1}
             max={20}
             label="Decay"
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
           <Knob
             value={preDelayMs}
@@ -72,6 +78,8 @@ const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode }) => {
             label="Pre-dly"
             format={(v) => Math.round(v).toString()}
             unit="ms"
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
           />
         </div>
 

@@ -40,10 +40,10 @@ export class AudioEngine {
     return out;
   }
 
-  getDebug(): Record<NodeId, unknown> {
+  getRuntimeState(): Record<NodeId, unknown> {
     const out: Record<NodeId, unknown> = {};
     for (const [id, n] of this.audioNodes) {
-      if (n.getDebug) out[id] = n.getDebug();
+      if (n.getRuntimeState) out[id] = n.getRuntimeState();
     }
     return out;
   }
@@ -163,7 +163,12 @@ export class AudioEngine {
     }
   }
 
-  dispatchMidi(graph: GraphState, sourceNodeId: NodeId, event: MidiEvent): void {
+  dispatchMidi(
+    graph: GraphState,
+    sourceNodeId: NodeId,
+    event: MidiEvent,
+    stateOverrides?: ReadonlyMap<NodeId, Record<string, unknown>>,
+  ): void {
     const ctx = this.audioContext;
     if (!ctx) return;
 
@@ -185,7 +190,12 @@ export class AudioEngine {
       const node = graph.nodes.find((n) => n.id === current.nodeId);
       if (node) {
         const runtime = this.audioNodes.get(node.id);
-        runtime?.handleMidi?.(event, current.portId, node.state as any);
+        const override = stateOverrides?.get(node.id);
+        const effectiveState =
+          override && Object.keys(override).length > 0
+            ? ({ ...node.state, ...override } as any)
+            : (node.state as any);
+        runtime?.handleMidi?.(event, current.portId, effectiveState);
       }
 
       const outgoing = graph.connections.filter(

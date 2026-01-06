@@ -144,7 +144,7 @@ function createSamplePlayerRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNod
       outGain.disconnect();
     },
     getLevel: () => rmsFromAnalyser(meter, meterBuffer),
-    getDebug: () => ({
+    getRuntimeState: () => ({
       sampleId: currentState?.sampleId ?? null,
       error: lastError,
       voices: activeSources.length,
@@ -158,4 +158,3 @@ export function samplePlayerAudioFactory(_services: AudioNodeServices): AudioNod
     create: (ctx, nodeId) => createSamplePlayerRuntime(ctx, nodeId),
   };
 }
-

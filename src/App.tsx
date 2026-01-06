@@ -2,13 +2,15 @@ import styles from "./App.module.css";
 import { GraphEditor, type GraphEditorHandle } from "./graph/GraphEditor";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAudioEngine } from "./audio/engine";
-import type { GraphState } from "./graph/types";
+import type { GraphState, GraphNode } from "./graph/types";
 import { exportProject, downloadBlob, importProject, pickFile } from "./project";
+import { GraphDocProvider, useGraphDoc } from "./state";
+import { createNode } from "./graph/graphUtils";
 
-function readAudioDspLoad(engineDebug: Record<string, unknown>): number | null {
+function readAudioDspLoad(engineRuntimeState: Record<string, unknown>): number | null {
   let max = 0;
   let any = false;
-  for (const v of Object.values(engineDebug)) {
+  for (const v of Object.values(engineRuntimeState)) {
     if (!v || typeof v !== "object") continue;
     const cpuLoad = (v as any).cpuLoad;
     if (typeof cpuLoad !== "number" || !Number.isFinite(cpuLoad)) continue;
@@ -18,13 +20,22 @@ function readAudioDspLoad(engineDebug: Record<string, unknown>): number | null {
   return any ? max : null;
 }
 
-export function App() {
-  const graphRef = useRef<GraphState | null>(null);
+function AppContent() {
+  const {
+    graphState,
+    isLoading,
+    addNode,
+    newDocument,
+    importDocument,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
+  } = useGraphDoc();
+
   const graphEditorRef = useRef<GraphEditorHandle | null>(null);
   const didAutoStartRef = useRef(false);
-  const [audioState, setAudioState] = useState<AudioContextState | "off">(
-    "off"
-  );
+  const [audioState, setAudioState] = useState<AudioContextState | "off">("off");
   const [dspLoad, setDspLoad] = useState<number | null>(null);
 
   const ensureAudioRunning = useCallback(async (graph: GraphState | null) => {
@@ -46,8 +57,7 @@ export function App() {
       }
       if (didAutoStartRef.current) return;
       didAutoStartRef.current = true;
-      const snapshot = graphEditorRef.current?.getGraph() ?? graphRef.current;
-      void ensureAudioRunning(snapshot ?? null);
+      void ensureAudioRunning(graphState);
     };
 
     const pointerOptions: AddEventListenerOptions = {
@@ -61,13 +71,13 @@ export function App() {
       window.removeEventListener("pointerdown", onFirstInteraction, pointerOptions);
       window.removeEventListener("keydown", onFirstInteraction, keyOptions);
     };
-  }, [ensureAudioRunning]);
+  }, [ensureAudioRunning, graphState]);
 
   useEffect(() => {
     if (audioState === "running") {
       const interval = window.setInterval(() => {
         const engine = getAudioEngine();
-        setDspLoad(readAudioDspLoad(engine.getDebug()));
+        setDspLoad(readAudioDspLoad(engine.getRuntimeState()));
       }, 100);
       return () => window.clearInterval(interval);
     } else {
@@ -76,17 +86,16 @@ export function App() {
   }, [audioState]);
 
   const handleExport = useCallback(async () => {
-    const graph = graphEditorRef.current?.getGraph();
-    if (!graph) return;
+    if (!graphState) return;
 
     try {
-      const blob = await exportProject(graph);
+      const blob = await exportProject(graphState);
       const timestamp = new Date().toISOString().slice(0, 10);
       downloadBlob(blob, `webaudio-project-${timestamp}.zip`);
     } catch (err) {
       console.error("Export failed:", err);
     }
-  }, []);
+  }, [graphState]);
 
   const handleImport = useCallback(async () => {
     const file = await pickFile(".zip");
@@ -103,12 +112,40 @@ export function App() {
       console.warn("Import warnings:", result.warnings);
     }
 
-    graphEditorRef.current?.setGraph(result.graph);
-  }, []);
+    importDocument(result.graph);
+  }, [importDocument]);
 
   const handleNew = useCallback(() => {
-    graphEditorRef.current?.resetGraph();
-  }, []);
+    newDocument();
+  }, [newDocument]);
+
+  const handleAddNode = useCallback(
+    (type: GraphNode["type"]) => {
+      const node = createNode(
+        type,
+        240 + (Math.random() - 0.5) * 120,
+        200 + (Math.random() - 0.5) * 120
+      );
+      addNode(node);
+    },
+    [addNode]
+  );
+
+  if (isLoading) {
+    return (
+      <div className={styles.shell}>
+        <div className={styles.loading}>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!graphState) {
+    return (
+      <div className={styles.shell}>
+        <div className={styles.loading}>No document</div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.shell}>
@@ -116,9 +153,6 @@ export function App() {
         ref={graphEditorRef}
         audioState={audioState}
         onEnsureAudioRunning={ensureAudioRunning}
-        onGraphChange={(g) => {
-          graphRef.current = g;
-        }}
       />
 
       <div className={styles.topBar}>
@@ -128,21 +162,9 @@ export function App() {
             className={styles.toolbarSelect}
             value=""
             onChange={(e) => {
-              const type = e.target.value as
-                | "midiSource"
-                | "ccSource"
-                | "oscillator"
-                | "envelope"
-                | "gain"
-                | "filter"
-                | "delay"
-                | "reverb"
-                | "limiter"
-                | "samplePlayer"
-                | "audioOut"
-                | "";
+              const type = e.target.value as GraphNode["type"] | "";
               if (!type) return;
-              graphEditorRef.current?.addNode(type);
+              handleAddNode(type);
             }}
           >
             <option value="" disabled>
@@ -160,6 +182,24 @@ export function App() {
             <option value="samplePlayer">Sample Player</option>
             <option value="audioOut">Output</option>
           </select>
+          <button
+            type="button"
+            className={styles.toolbarButton}
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            className={styles.toolbarButton}
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Shift+Z)"
+          >
+            Redo
+          </button>
           <button
             type="button"
             className={styles.toolbarButton}
@@ -197,8 +237,7 @@ export function App() {
             onClick={async () => {
               const engine = getAudioEngine();
               const next = await engine.toggleRunning();
-              const snapshot = graphRef.current;
-              if (next === "running" && snapshot) engine.syncGraph(snapshot);
+              if (next === "running" && graphState) engine.syncGraph(graphState);
               setAudioState(next);
             }}
           >
@@ -207,5 +246,13 @@ export function App() {
         </div>
       </div>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <GraphDocProvider>
+      <AppContent />
+    </GraphDocProvider>
   );
 }

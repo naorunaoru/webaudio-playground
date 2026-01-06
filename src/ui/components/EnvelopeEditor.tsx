@@ -15,6 +15,8 @@ export type EnvelopeEditorProps = Readonly<{
   noteOffAtMs?: number | null;
   holdMs?: number;
   height?: number;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }>;
 
 function clamp01(v: number): number {
@@ -249,6 +251,8 @@ export function EnvelopeEditor({
   noteOffAtMs = null,
   holdMs = 240,
   height = 86,
+  onDragStart,
+  onDragEnd,
 }: EnvelopeEditorProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [activeHandle, setActiveHandle] = useState<HandleKey | null>(null);
@@ -553,6 +557,7 @@ export function EnvelopeEditor({
                 ? env.decayShape
                 : env.releaseShape;
             curveDragRef.current = { segment, startY: py, startShape };
+            onDragStart?.();
             return;
           }
 
@@ -568,6 +573,7 @@ export function EnvelopeEditor({
         setActiveHandle(hits[0]!.key);
         setActiveSegment(null);
         curveDragRef.current = null;
+        onDragStart?.();
       }}
       onPointerMove={(e) => {
         const canvas = canvasRef.current;
@@ -622,21 +628,25 @@ export function EnvelopeEditor({
         const canvas = canvasRef.current;
         if (!canvas) return;
         if (activePointerIdRef.current !== e.pointerId) return;
+        const wasDragging = activeHandle != null || activeSegment != null;
         activePointerIdRef.current = null;
         setActiveHandle(null);
         setActiveSegment(null);
         curveDragRef.current = null;
         canvas.releasePointerCapture(e.pointerId);
+        if (wasDragging) onDragEnd?.();
       }}
       onPointerCancel={(e) => {
         const canvas = canvasRef.current;
         if (!canvas) return;
         if (activePointerIdRef.current !== e.pointerId) return;
+        const wasDragging = activeHandle != null || activeSegment != null;
         activePointerIdRef.current = null;
         setActiveHandle(null);
         setActiveSegment(null);
         curveDragRef.current = null;
         canvas.releasePointerCapture(e.pointerId);
+        if (wasDragging) onDragEnd?.();
       }}
       />
     </div>

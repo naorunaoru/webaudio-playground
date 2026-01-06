@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type {
-  ConnectionEndpoint,
-  DragState,
-  GraphNode,
-  GraphState,
-} from "../types";
+import type { ConnectionEndpoint, DragState } from "../types";
 import { localPointFromClientPoint, viewToWorld } from "../coordinates";
 
 type UseDragInteractionOptions = {
@@ -12,6 +7,8 @@ type UseDragInteractionOptions = {
   scrollRef: React.RefObject<{ x: number; y: number } | null>;
   onMoveNode: (nodeId: string, x: number, y: number) => void;
   onConnect: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 };
 
 export function useDragInteraction({
@@ -19,13 +16,28 @@ export function useDragInteraction({
   scrollRef,
   onMoveNode,
   onConnect,
+  onDragStart,
+  onDragEnd,
 }: UseDragInteractionOptions) {
   const [drag, setDrag] = useState<DragState>({ type: "none" });
   const dragRef = useRef<DragState>({ type: "none" });
+  const wasNoneDragRef = useRef(true);
 
   useEffect(() => {
     dragRef.current = drag;
-  }, [drag]);
+
+    // Track drag start/end transitions
+    const wasNone = wasNoneDragRef.current;
+    const isNone = drag.type === "none";
+
+    if (wasNone && !isNone) {
+      onDragStart?.();
+    } else if (!wasNone && isNone) {
+      onDragEnd?.();
+    }
+
+    wasNoneDragRef.current = isNone;
+  }, [drag, onDragStart, onDragEnd]);
 
   useEffect(() => {
     if (drag.type === "none") return;

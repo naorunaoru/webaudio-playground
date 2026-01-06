@@ -24,17 +24,23 @@ export type GraphNodeCardProps = {
   Ui: React.ComponentType<{
     node: GraphNode;
     onPatchNode: (nodeId: NodeId, patch: Partial<any>) => void;
+    onPatchNodeEphemeral?: (nodeId: NodeId, patch: Partial<any>) => void;
     onEmitMidi: (nodeId: NodeId, event: MidiEvent) => Promise<void>;
-    debug: unknown;
+    runtimeState: unknown;
+    startBatch?: () => void;
+    endBatch?: () => void;
   }>;
-  debug: unknown;
+  runtimeState: unknown;
   rootRef: React.RefObject<HTMLElement | null>;
   scrollRef: React.RefObject<{ x: number; y: number } | null>;
   onRegisterNodeEl: (nodeId: NodeId, el: HTMLElement | null) => void;
   onSelectNode: (nodeId: NodeId) => void;
   onStartDrag: (drag: DragState) => void;
   onPatchNode: (nodeId: NodeId, patch: Partial<any>) => void;
+  onPatchNodeEphemeral?: (nodeId: NodeId, patch: Partial<any>) => void;
   onEmitMidi: (nodeId: NodeId, event: MidiEvent) => Promise<void>;
+  startBatch?: () => void;
+  endBatch?: () => void;
 };
 
 export function GraphNodeCard({
@@ -48,14 +54,17 @@ export function GraphNodeCard({
   meterOpacity,
   midiVisible,
   Ui,
-  debug,
+  runtimeState,
   rootRef,
   scrollRef,
   onRegisterNodeEl,
   onSelectNode,
   onStartDrag,
   onPatchNode,
+  onPatchNodeEphemeral,
   onEmitMidi,
+  startBatch,
+  endBatch,
 }: GraphNodeCardProps) {
   const handleHeaderPointerDown = (e: React.PointerEvent) => {
     if (!rootRef.current || !scrollRef.current) return;
@@ -167,8 +176,11 @@ export function GraphNodeCard({
         <Ui
           node={node}
           onPatchNode={onPatchNode}
+          onPatchNodeEphemeral={onPatchNodeEphemeral}
           onEmitMidi={onEmitMidi}
-          debug={debug}
+          runtimeState={runtimeState}
+          startBatch={startBatch}
+          endBatch={endBatch}
         />
       </div>
     </div>
