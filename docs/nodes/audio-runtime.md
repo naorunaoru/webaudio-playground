@@ -292,3 +292,54 @@ export const limiterNode: NodeModule<any> = {
   workletModules: [processorUrl],  // Preloaded before audio starts
 };
 ```
+
+## Audio Engine Lifecycle (App-Level)
+
+The audio runtime instances above are managed by a single `AudioEngine` singleton (`src/audio/engine.ts`) that owns the `AudioContext` and keeps it in sync with the current graph.
+
+### Context Creation
+
+The engine creates the `AudioContext` lazily (on first start/toggle) and sets up a simple master chain:
+- A master gain node (the “master input” passed to node factories)
+- A master analyser used for output metering/waveform capture
+- The analyser connects to `audioContext.destination`
+
+### Starting and Stopping
+
+Browsers typically require a user gesture before audio can start. The app handles this in `src/App.tsx` by calling `engine.ensureRunning()` on first pointer/key interaction (unless the user explicitly clicked the audio toggle).
+
+There are two entry points:
+- `ensureRunning()`: loads worklets (if needed) and resumes the context
+- `toggleRunning()`: suspend/resume for the UI “Audio:” button
+
+### Worklet Preloading
+
+Before the context is resumed, the engine preloads any built-in AudioWorklet modules declared by registered nodes:
+- Node modules declare URLs in `workletModules`
+- `src/audio/nodeRegistry.ts` collects and de-duplicates them
+- The engine loads each module once per session via `audioContext.audioWorklet.addModule(url)`
+
+### Graph Sync
+
+When audio is on, the graph editor calls `engine.syncGraph(graph)` whenever the graph changes.
+
+At a high level, sync does:
+- Remove runtimes for deleted nodes (calling `onRemove` when present)
+- Create runtimes for new nodes (via the registered `AudioNodeFactory` for that node type)
+- Push the latest persisted node state into each runtime via `updateState(state)`
+- Rebuild audio and automation connections based on the graph’s current edges
+
+Only `audio` and `automation` connections affect the Web Audio graph. MIDI/CC routing is handled separately (see below).
+
+### MIDI/CC Dispatch to Runtimes
+
+Some nodes need time-critical responses on the audio side (e.g. note triggers). For that, the engine can propagate MIDI/CC events through the connection graph and call `handleMidi(event, portId, effectiveState)` on each reached runtime.
+
+This is the runtime counterpart to the graph-layer routing described in [event-flow.md](./event-flow.md).
+
+### Metering and Runtime Telemetry
+
+For visualization, the engine can query:
+- Per-node meters via `getLevel()` (if implemented by that runtime)
+- Master output level/waveform via the engine’s analyser
+- Runtime-only telemetry via `getRuntimeState()` (used in `src/App.tsx` to estimate DSP load for custom processors)

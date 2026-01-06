@@ -68,3 +68,4 @@ npm run build
 |----------|-------------|
 | [docs/nodes/](docs/nodes/) | Audio node system — how to add new nodes |
 | [docs/ui/](docs/ui/) | UI component library — controls, primitives, theming |
+| [docs/project-format.md](docs/project-format.md) | Project `.zip` format — graph + embedded samples |
