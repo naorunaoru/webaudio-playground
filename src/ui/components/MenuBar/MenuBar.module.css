@@ -1,0 +1,18 @@
+.menuBar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.menuBarItem {
+  position: relative;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  outline: none;
+}

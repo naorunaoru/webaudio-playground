@@ -87,6 +87,8 @@ type GraphDocContextValue = {
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  undoDescription: string | null;
+  redoDescription: string | null;
 
   /** Document operations */
   newDocument: () => void;
@@ -537,6 +539,8 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     redo,
     canUndo: undoStack.length > 0,
     canRedo: redoStack.length > 0,
+    undoDescription: undoStack.length > 0 ? undoStack[undoStack.length - 1].description : null,
+    redoDescription: redoStack.length > 0 ? redoStack[redoStack.length - 1].description : null,
     newDocument,
     importDocument,
   };

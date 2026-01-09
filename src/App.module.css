@@ -13,7 +13,7 @@
   top: 12px;
   z-index: 20;
   display: flex;
-  align-items: center;
+  align-items: left;
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
@@ -21,20 +21,6 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(8, 10, 14, 0.52);
   backdrop-filter: blur(10px);
-}
-
-.topBarTitle {
-  font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.2px;
-  color: rgba(231, 231, 231, 0.92);
-  user-select: none;
-}
-
-.topBarControls {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 .toolbarStat {
@@ -53,25 +39,6 @@
 .toolbarStatValue {
   color: rgba(231, 231, 231, 0.98);
   font-variant-numeric: tabular-nums;
-}
-
-.toolbarSelect {
-  background: rgba(0, 0, 0, 0.25);
-  color: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
-  padding: 6px 10px;
-  font-size: 12px;
-}
-
-.toolbarButton {
-  background: rgba(0, 0, 0, 0.25);
-  color: inherit;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 12px;
 }
 
 .placeholder {

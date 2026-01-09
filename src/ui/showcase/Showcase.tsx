@@ -2,6 +2,15 @@ import { useState } from "react";
 import { Knob } from "../components/Knob";
 import { NumericInput } from "../components/NumericInput";
 import { RadioGroup } from "../components/RadioGroup";
+import {
+  Menu,
+  MenuItem,
+  MenuItemCheckbox,
+  MenuSeparator,
+  SubMenu,
+  useContextMenu,
+} from "../components/Menu";
+import { MenuBar, MenuBarItem } from "../components/MenuBar";
 import { ThemeProvider } from "../context";
 import { WaveformIcon } from "../icons";
 import { defaultTheme } from "../types";
@@ -47,6 +56,89 @@ const curveOptions: OptionDef<string>[] = [
   { value: "lin", content: "Lin" },
   { value: "exp", content: "Exp" },
 ];
+
+// Demo component for context menu
+function ContextMenuDemo() {
+  const { contextMenuProps, menuProps } = useContextMenu();
+  const [showGrid, setShowGrid] = useState(true);
+
+  return (
+    <>
+      <div
+        {...contextMenuProps}
+        style={{
+          padding: "8px 12px",
+          background: "#2a2a3e",
+          borderRadius: 4,
+          fontSize: 11,
+          cursor: "context-menu",
+        }}
+      >
+        Right-click me
+      </div>
+      <Menu {...menuProps}>
+        <MenuItem onClick={() => console.log("Cut")}>Cut</MenuItem>
+        <MenuItem onClick={() => console.log("Copy")}>Copy</MenuItem>
+        <MenuItem onClick={() => console.log("Paste")}>Paste</MenuItem>
+        <MenuSeparator />
+        <MenuItemCheckbox checked={showGrid} onChange={setShowGrid}>
+          Show Grid
+        </MenuItemCheckbox>
+        <MenuSeparator />
+        <SubMenu label="More Options">
+          <MenuItem>Option A</MenuItem>
+          <MenuItem>Option B</MenuItem>
+          <SubMenu label="Even More">
+            <MenuItem>Deep Option 1</MenuItem>
+            <MenuItem>Deep Option 2</MenuItem>
+          </SubMenu>
+        </SubMenu>
+        <MenuItem disabled>Disabled Item</MenuItem>
+      </Menu>
+    </>
+  );
+}
+
+// Demo component for menu bar
+function MenuBarDemo() {
+  const [showGrid, setShowGrid] = useState(true);
+  const [snapToGrid, setSnapToGrid] = useState(false);
+
+  return (
+    <MenuBar>
+      <MenuBarItem label="File" index={0}>
+        <MenuItem shortcut="Ctrl+N">New</MenuItem>
+        <MenuItem shortcut="Ctrl+O">Open</MenuItem>
+        <MenuSeparator />
+        <MenuItem shortcut="Ctrl+S">Save</MenuItem>
+        <SubMenu label="Export">
+          <MenuItem>Export as WAV</MenuItem>
+          <MenuItem>Export as MP3</MenuItem>
+          <MenuItem>Export as JSON</MenuItem>
+        </SubMenu>
+      </MenuBarItem>
+      <MenuBarItem label="Edit" index={1}>
+        <MenuItem shortcut="Ctrl+Z">Undo</MenuItem>
+        <MenuItem shortcut="Ctrl+Y">Redo</MenuItem>
+        <MenuSeparator />
+        <MenuItem shortcut="Ctrl+X">Cut</MenuItem>
+        <MenuItem shortcut="Ctrl+C">Copy</MenuItem>
+        <MenuItem shortcut="Ctrl+V">Paste</MenuItem>
+      </MenuBarItem>
+      <MenuBarItem label="View" index={2}>
+        <MenuItemCheckbox checked={showGrid} onChange={setShowGrid}>
+          Show Grid
+        </MenuItemCheckbox>
+        <MenuItemCheckbox checked={snapToGrid} onChange={setSnapToGrid}>
+          Snap to Grid
+        </MenuItemCheckbox>
+        <MenuSeparator />
+        <MenuItem shortcut="Ctrl++">Zoom In</MenuItem>
+        <MenuItem shortcut="Ctrl+-">Zoom Out</MenuItem>
+      </MenuBarItem>
+    </MenuBar>
+  );
+}
 
 export function Showcase() {
   const [knobValue, setKnobValue] = useState(0.5);
@@ -207,6 +299,11 @@ export function Showcase() {
         />
       ),
     },
+    {
+      name: "Context Menu",
+      theme: themes.indigo,
+      render: () => <ContextMenuDemo />,
+    },
   ];
 
   return (
@@ -253,6 +350,13 @@ export function Showcase() {
           </ThemeProvider>
         ))}
       </div>
+
+      <h2 style={{ marginTop: 48, marginBottom: 16, fontSize: 18, fontWeight: 600 }}>
+        Menu Bar
+      </h2>
+      <ThemeProvider theme={themes.indigo}>
+        <MenuBarDemo />
+      </ThemeProvider>
     </div>
   );
 }

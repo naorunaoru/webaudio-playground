@@ -3,11 +3,21 @@ import { GraphEditor, type GraphEditorHandle } from "./graph/GraphEditor";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAudioEngine } from "./audio/engine";
 import type { GraphState, GraphNode } from "./graph/types";
-import { exportProject, downloadBlob, importProject, pickFile } from "./project";
+import {
+  exportProject,
+  downloadBlob,
+  importProject,
+  pickFile,
+} from "./project";
 import { GraphDocProvider, useGraphDoc } from "./state";
 import { createNode } from "./graph/graphUtils";
+import { MenuBar, MenuBarItem } from "./ui/components/MenuBar";
+import { MenuItem, MenuSeparator } from "./ui/components/Menu";
+import { NODE_MODULES } from "./nodes";
 
-function readAudioDspLoad(engineRuntimeState: Record<string, unknown>): number | null {
+function readAudioDspLoad(
+  engineRuntimeState: Record<string, unknown>
+): number | null {
   let max = 0;
   let any = false;
   for (const v of Object.values(engineRuntimeState)) {
@@ -31,11 +41,15 @@ function AppContent() {
     redo,
     canUndo,
     canRedo,
+    undoDescription,
+    redoDescription,
   } = useGraphDoc();
 
   const graphEditorRef = useRef<GraphEditorHandle | null>(null);
   const didAutoStartRef = useRef(false);
-  const [audioState, setAudioState] = useState<AudioContextState | "off">("off");
+  const [audioState, setAudioState] = useState<AudioContextState | "off">(
+    "off"
+  );
   const [dspLoad, setDspLoad] = useState<number | null>(null);
 
   const ensureAudioRunning = useCallback(async (graph: GraphState | null) => {
@@ -68,7 +82,11 @@ function AppContent() {
     window.addEventListener("pointerdown", onFirstInteraction, pointerOptions);
     window.addEventListener("keydown", onFirstInteraction, keyOptions);
     return () => {
-      window.removeEventListener("pointerdown", onFirstInteraction, pointerOptions);
+      window.removeEventListener(
+        "pointerdown",
+        onFirstInteraction,
+        pointerOptions
+      );
       window.removeEventListener("keydown", onFirstInteraction, keyOptions);
     };
   }, [ensureAudioRunning, graphState]);
@@ -156,93 +174,58 @@ function AppContent() {
       />
 
       <div className={styles.topBar}>
-        <div className={styles.topBarTitle}>webaudio-playground</div>
-        <div className={styles.topBarControls}>
-          <select
-            className={styles.toolbarSelect}
-            value=""
-            onChange={(e) => {
-              const type = e.target.value as GraphNode["type"] | "";
-              if (!type) return;
-              handleAddNode(type);
-            }}
-          >
-            <option value="" disabled>
-              Add node…
-            </option>
-            <option value="midiSource">MIDI Source</option>
-            <option value="ccSource">CC Source</option>
-            <option value="oscillator">Oscillator</option>
-            <option value="envelope">Envelope</option>
-            <option value="gain">Gain</option>
-            <option value="filter">Filter</option>
-            <option value="delay">Delay</option>
-            <option value="reverb">Reverb</option>
-            <option value="limiter">Limiter</option>
-            <option value="samplePlayer">Sample Player</option>
-            <option value="audioOut">Output</option>
-          </select>
-          <button
-            type="button"
-            className={styles.toolbarButton}
-            onClick={undo}
-            disabled={!canUndo}
-            title="Undo (Ctrl+Z)"
-          >
-            Undo
-          </button>
-          <button
-            type="button"
-            className={styles.toolbarButton}
-            onClick={redo}
-            disabled={!canRedo}
-            title="Redo (Ctrl+Shift+Z)"
-          >
-            Redo
-          </button>
-          <button
-            type="button"
-            className={styles.toolbarButton}
-            onClick={handleNew}
-          >
-            New
-          </button>
-          <button
-            type="button"
-            className={styles.toolbarButton}
-            onClick={handleImport}
-          >
-            Import
-          </button>
-          <button
-            type="button"
-            className={styles.toolbarButton}
-            onClick={handleExport}
-          >
-            Export
-          </button>
-          <div
-            className={styles.toolbarStat}
-            title="Approximate audio DSP load from custom AudioWorklet processors (not total system CPU)."
-          >
-            DSP:{" "}
-            <span className={styles.toolbarStatValue}>
-              {dspLoad == null ? "—" : `${Math.round(dspLoad * 100)}%`}
-            </span>
-          </div>
-          <button
-            type="button"
-            className={styles.toolbarButton}
-            data-audio-toggle
-            onClick={async () => {
-              const engine = getAudioEngine();
-              const next = await engine.toggleRunning();
-              if (next === "running" && graphState) engine.syncGraph(graphState);
-              setAudioState(next);
-            }}
-          >
-            Audio: {audioState}
-          </button>
+        <MenuBar>
+          <MenuBarItem label="File" index={0}>
+            <MenuItem onClick={handleNew}>New</MenuItem>
+            <MenuSeparator />
+            <MenuItem onClick={handleImport}>Import</MenuItem>
+            <MenuItem onClick={handleExport}>Export</MenuItem>
+          </MenuBarItem>
+
+          <MenuBarItem label="Edit" index={1}>
+            <MenuItem onClick={undo} disabled={!canUndo}>
+              Undo{undoDescription ? `: ${undoDescription}` : ""}
+            </MenuItem>
+            <MenuItem onClick={redo} disabled={!canRedo}>
+              Redo{redoDescription ? `: ${redoDescription}` : ""}
+            </MenuItem>
+          </MenuBarItem>
+
+          <MenuBarItem label="Add" index={2}>
+            {Object.entries(NODE_MODULES).map(([type, mod]) => (
+              <MenuItem
+                key={type}
+                onClick={() => handleAddNode(type as GraphNode["type"])}
+              >
+                {mod.graph.title}
+              </MenuItem>
+            ))}
+          </MenuBarItem>
+
+          <MenuBarItem label="Audio" index={3}>
+            <MenuItem
+              data-audio-toggle
+              onClick={async () => {
+                const engine = getAudioEngine();
+                const next = await engine.toggleRunning();
+                if (next === "running" && graphState)
+                  engine.syncGraph(graphState);
+                setAudioState(next);
+              }}
+            >
+              {audioState === "running" ? "Stop Audio" : "Start Audio"}
+            </MenuItem>
+          </MenuBarItem>
+        </MenuBar>
+
+        <div
+          className={styles.toolbarStat}
+          title="Approximate audio DSP load from custom AudioWorklet processors (not total system CPU)."
+        >
+          DSP:{" "}
+          <span className={styles.toolbarStatValue}>
+            {dspLoad == null ? "—" : `${Math.round(dspLoad * 100)}%`}
+          </span>
         </div>
       </div>
     </div>
