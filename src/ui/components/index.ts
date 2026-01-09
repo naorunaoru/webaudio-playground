@@ -15,3 +15,6 @@ export type { RadioGroupProps } from './RadioGroup';
 
 export { EnvelopeEditor } from './EnvelopeEditor';
 export type { EnvelopeEditorProps } from './EnvelopeEditor';
+
+export { WithContextMenu } from './WithContextMenu';
+export type { WithContextMenuProps, ContextMenuItem } from './WithContextMenu';

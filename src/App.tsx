@@ -174,7 +174,7 @@ function AppContent() {
       />
 
       <div className={styles.topBar}>
-        <MenuBar>
+        <MenuBar menuOffset={{ y: 6 }}>
           <MenuBarItem label="File" index={0}>
             <MenuItem onClick={handleNew}>New</MenuItem>
             <MenuSeparator />

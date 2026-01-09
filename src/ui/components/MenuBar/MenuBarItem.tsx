@@ -1,7 +1,6 @@
 import {
   useRef,
   useCallback,
-  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -28,6 +27,8 @@ export function MenuBarItem({ label, children, index = 0 }: MenuBarItemProps) {
   // Use menu bar context if available, otherwise use local state
   const isOpen = menuBarContext ? menuBarContext.openIndex === index : localOpen;
   const isAnyMenuOpen = menuBarContext?.isMenuOpen ?? false;
+  // Get offset from menu bar context
+  const menuOffset = menuBarContext?.menuOffset;
 
   const open = useCallback(() => {
     if (menuBarContext) {
@@ -103,6 +104,7 @@ export function MenuBarItem({ label, children, index = 0 }: MenuBarItemProps) {
         onClose={close}
         anchorEl={triggerRef.current}
         placement="bottom-start"
+        offset={menuOffset}
         onCloseAll={close}
       >
         {children}

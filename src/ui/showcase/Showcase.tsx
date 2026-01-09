@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Knob } from "../components/Knob";
 import { NumericInput } from "../components/NumericInput";
 import { RadioGroup } from "../components/RadioGroup";
+import { WithContextMenu } from "../components/WithContextMenu";
 import {
   Menu,
   MenuItem,
@@ -201,6 +202,24 @@ export function Showcase() {
           label="Locked"
           disabled
         />
+      ),
+    },
+    {
+      name: "Knob (Context Menu)",
+      theme: themes.indigo,
+      render: () => (
+        <WithContextMenu
+          items={[{ label: "Reset", onClick: () => setKnobValue(0.5) }]}
+        >
+          <Knob
+            value={knobValue}
+            onChange={setKnobValue}
+            min={0}
+            max={1}
+            label="Gain"
+            indicator="arc"
+          />
+        </WithContextMenu>
       ),
     },
     {

@@ -13,8 +13,8 @@ export interface ChromeColors {
   text: string;
   /** Secondary/muted text color (labels, placeholders) */
   textMuted: string;
-  /** Tooltip/popover background */
-  tooltip: string;
+  /** Popover/tooltip/menu background */
+  popover: string;
 }
 
 /**
@@ -53,7 +53,7 @@ export const chrome: ChromeColors = {
   border: '#444',
   text: '#fff',
   textMuted: '#aaa',
-  tooltip: '#1a1a2e',
+  popover: '#1a1a2e',
 };
 
 /**

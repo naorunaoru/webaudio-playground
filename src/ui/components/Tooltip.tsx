@@ -38,7 +38,7 @@ export function Tooltip({ content, children, forceVisible = false }: TooltipProp
             fontSize: 10,
             fontFamily: "monospace",
             color: chrome.text,
-            background: chrome.tooltip,
+            background: chrome.popover,
             border: `1px solid ${chrome.track}`,
             borderRadius: 3,
             whiteSpace: "nowrap",

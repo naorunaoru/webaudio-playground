@@ -1,4 +1,5 @@
 import { createContext, useContext } from "react";
+import type { MenuOffset } from "./Menu";
 
 export interface MenuContextValue {
   /** Currently focused item index */
@@ -40,6 +41,8 @@ export interface MenuBarContextValue {
   setOpenIndex: (index: number) => void;
   /** Whether any menu is currently open */
   isMenuOpen: boolean;
+  /** Offset for dropdown menus */
+  menuOffset?: MenuOffset;
 }
 
 export const MenuBarContext = createContext<MenuBarContextValue | null>(null);

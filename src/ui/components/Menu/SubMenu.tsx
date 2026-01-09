@@ -265,7 +265,7 @@ export function SubMenu({
     padding: "4px 0",
     borderRadius: 8,
     zIndex: 1001,
-    background: chrome.tooltip,
+    background: chrome.popover,
     border: `1px solid ${chrome.border}`,
     boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
     color: chrome.text,

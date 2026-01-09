@@ -1,5 +1,6 @@
 import { useState, useMemo, type ReactNode, type CSSProperties } from "react";
 import { MenuBarContext, type MenuBarContextValue } from "../Menu/MenuContext";
+import type { MenuOffset } from "../Menu/Menu";
 import styles from "./MenuBar.module.css";
 
 export interface MenuBarProps {
@@ -8,9 +9,11 @@ export interface MenuBarProps {
   className?: string;
   /** Optional inline styles for the container */
   style?: CSSProperties;
+  /** Offset for dropdown menus (e.g., { y: 4 } for a 4px gap) */
+  menuOffset?: MenuOffset;
 }
 
-export function MenuBar({ children, className, style }: MenuBarProps) {
+export function MenuBar({ children, className, style, menuOffset }: MenuBarProps) {
   const [openIndex, setOpenIndex] = useState(-1);
 
   const contextValue = useMemo<MenuBarContextValue>(
@@ -18,8 +21,9 @@ export function MenuBar({ children, className, style }: MenuBarProps) {
       openIndex,
       setOpenIndex,
       isMenuOpen: openIndex >= 0,
+      menuOffset,
     }),
-    [openIndex]
+    [openIndex, menuOffset]
   );
 
   const combinedClassName = className

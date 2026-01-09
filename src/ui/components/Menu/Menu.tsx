@@ -22,6 +22,11 @@ export type MenuPlacement =
   | "left-start"
   | "left-end";
 
+export interface MenuOffset {
+  x?: number;
+  y?: number;
+}
+
 export interface MenuProps {
   /** Whether the menu is open */
   open: boolean;
@@ -33,6 +38,8 @@ export interface MenuProps {
   anchorPosition?: { x: number; y: number };
   /** Placement relative to anchor */
   placement?: MenuPlacement;
+  /** Offset from the anchor position */
+  offset?: MenuOffset;
   /** Menu contents */
   children: ReactNode;
   /** Called when all menus should close (including parent menus) */
@@ -53,11 +60,12 @@ export function Menu({
   anchorEl,
   anchorPosition,
   placement = "bottom-start",
+  offset,
   children,
   onCloseAll,
   isSubmenu = false,
 }: MenuProps) {
-  const { chrome } = useTheme();
+  const { chrome, theme } = useTheme();
   const menuRef = useRef<HTMLDivElement>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
   const [hasOpenSubmenu, setHasOpenSubmenu] = useState(false);
@@ -136,6 +144,10 @@ export function Menu({
         }
       }
 
+      // Apply offset
+      top += offset?.y ?? 0;
+      left += offset?.x ?? 0;
+
       // Adjust for viewport boundaries
       const menuEl = menuRef.current;
       if (menuEl) {
@@ -168,7 +180,7 @@ export function Menu({
     calculatePosition();
     // Recalculate after menu renders to get accurate dimensions
     requestAnimationFrame(calculatePosition);
-  }, [open, anchorEl, anchorPosition, placement]);
+  }, [open, anchorEl, anchorPosition, placement, offset]);
 
   // Focus management
   useEffect(() => {
@@ -328,7 +340,8 @@ export function Menu({
   const menuStyle: CSSProperties = {
     top: position.top,
     left: position.left,
-    background: chrome.tooltip,
+    background: `color-mix(in srgb, color-mix(in srgb, ${chrome.popover} 90%, ${theme.primary}) 40%, transparent)`,
+    backdropFilter: "blur(20px)",
     border: `1px solid ${chrome.border}`,
     boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
     color: chrome.text,
