@@ -1,5 +1,7 @@
 # webaudio-playground
 
+<img width="854" height="627" alt="image" src="https://github.com/user-attachments/assets/c6492edb-3a01-41e6-92d4-f832a85840a7" />
+
 TW: vibe code
 
 A node-based audio synthesizer. Make your worst sounds by connecting modular nodes: oscillators, filters, envelopes, effects, and more.
