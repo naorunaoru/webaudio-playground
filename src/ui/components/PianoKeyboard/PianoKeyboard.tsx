@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { NodeId } from "../../../graph/types";
-import { useSelection, useMidi } from "../../../contexts";
+import { useSelection, useMidi, useMidiActiveNotes } from "../../../contexts";
 import styles from "./PianoKeyboard.module.css";
 
 // MIDI note numbers for one octave (C = 0 relative to octave start)
@@ -17,8 +17,6 @@ export interface PianoKeyboardProps {
   velocity?: number;
   /** MIDI channel (default: 1) */
   channel?: number;
-  /** Active notes to highlight (from external sources) */
-  activeNotes?: Set<number>;
 }
 
 export function PianoKeyboard({
@@ -26,10 +24,9 @@ export function PianoKeyboard({
   octaves = 2,
   velocity = 100,
   channel = 1,
-  activeNotes,
 }: PianoKeyboardProps) {
   const { selected } = useSelection();
-  const { emitMidi } = useMidi();
+  const { dispatchMidiToNode } = useMidi();
 
   // Track locally pressed keys (by pointer)
   const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set());
@@ -38,6 +35,9 @@ export function PianoKeyboard({
   const targetNodeId: NodeId | null =
     selected.type === "node" ? selected.nodeId : null;
 
+  // Subscribe to MIDI events dispatched to the target node
+  const externalActiveNotes = useMidiActiveNotes(targetNodeId);
+
   const handleNoteOn = useCallback(
     async (note: number, pointerId: number) => {
       if (!targetNodeId) return;
@@ -45,7 +45,7 @@ export function PianoKeyboard({
       activePointers.current.set(pointerId, note);
       setPressedKeys((prev) => new Set(prev).add(note));
 
-      await emitMidi(targetNodeId, {
+      await dispatchMidiToNode(targetNodeId, {
         type: "noteOn",
         note,
         velocity,
@@ -53,7 +53,7 @@ export function PianoKeyboard({
         atMs: performance.now(),
       });
     },
-    [targetNodeId, emitMidi, velocity, channel]
+    [targetNodeId, dispatchMidiToNode, velocity, channel]
   );
 
   const handleNoteOff = useCallback(
@@ -70,14 +70,14 @@ export function PianoKeyboard({
 
       if (!targetNodeId) return;
 
-      await emitMidi(targetNodeId, {
+      await dispatchMidiToNode(targetNodeId, {
         type: "noteOff",
         note,
         channel,
         atMs: performance.now(),
       });
     },
-    [targetNodeId, emitMidi, channel]
+    [targetNodeId, dispatchMidiToNode, channel]
   );
 
   const handlePointerDown = useCallback(
@@ -130,7 +130,7 @@ export function PianoKeyboard({
   }
 
   const isKeyActive = (note: number) =>
-    pressedKeys.has(note) || activeNotes?.has(note);
+    pressedKeys.has(note) || externalActiveNotes.has(note);
 
   const disabled = !targetNodeId;
 

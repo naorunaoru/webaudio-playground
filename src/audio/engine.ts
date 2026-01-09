@@ -8,6 +8,13 @@ export type EngineStatus = {
   sampleRate: number;
 };
 
+export type MidiDispatchEvent = {
+  nodeId: NodeId;
+  event: MidiEvent;
+};
+
+export type MidiDispatchListener = (evt: MidiDispatchEvent) => void;
+
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -18,6 +25,23 @@ export class AudioEngine {
   private factories: AudioNodeFactoryMap | null = null;
   private factoryOverrides: AudioNodeFactoryMap = {};
   private loadedWorkletModules = new Set<string>();
+  private midiListeners = new Set<MidiDispatchListener>();
+
+  onMidiDispatch(listener: MidiDispatchListener): () => void {
+    this.midiListeners.add(listener);
+    return () => this.midiListeners.delete(listener);
+  }
+
+  private emitMidiDispatch(nodeId: NodeId, event: MidiEvent): void {
+    const evt: MidiDispatchEvent = { nodeId, event };
+    for (const listener of this.midiListeners) {
+      try {
+        listener(evt);
+      } catch (e) {
+        console.error("MIDI dispatch listener error:", e);
+      }
+    }
+  }
 
   getStatus(): EngineStatus | null {
     if (!this.audioContext) return null;
@@ -196,6 +220,7 @@ export class AudioEngine {
             ? ({ ...node.state, ...override } as any)
             : (node.state as any);
         runtime?.handleMidi?.(event, current.portId, effectiveState);
+        this.emitMidiDispatch(current.nodeId, event);
       }
 
       const outgoing = graph.connections.filter(
@@ -203,6 +228,26 @@ export class AudioEngine {
       );
       for (const conn of outgoing) queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
     }
+  }
+
+  /**
+   * Send MIDI directly to a specific node without routing through graph connections.
+   * Used by control surfaces like the piano keyboard.
+   */
+  dispatchMidiDirect(
+    graph: GraphState,
+    targetNodeId: NodeId,
+    event: MidiEvent,
+  ): void {
+    const ctx = this.audioContext;
+    if (!ctx) return;
+
+    const node = graph.nodes.find((n) => n.id === targetNodeId);
+    if (!node) return;
+
+    const runtime = this.audioNodes.get(node.id);
+    runtime?.handleMidi?.(event, null, node.state as any);
+    this.emitMidiDispatch(targetNodeId, event);
   }
 
   private teardownNode(nodeId: NodeId) {

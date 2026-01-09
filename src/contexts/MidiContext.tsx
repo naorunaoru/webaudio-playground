@@ -3,11 +3,14 @@ import {
   useContext,
   useCallback,
   useRef,
+  useEffect,
+  useState,
   type ReactNode,
 } from "react";
 import type { GraphState, MidiEvent, NodeId } from "../graph/types";
-import { getAudioEngine } from "../audio/engine";
+import { getAudioEngine, type MidiDispatchEvent } from "../audio/engine";
 import { computeMidiPatches } from "../graph/midiRouting";
+import { NODE_MODULES } from "../nodes";
 
 type MidiQueueItem = {
   graph: GraphState;
@@ -19,7 +22,17 @@ type MidiQueueItem = {
 };
 
 type MidiContextValue = {
+  /** Emit MIDI from a source node, routing through graph connections */
   emitMidi: (nodeId: NodeId, event: MidiEvent) => Promise<void>;
+  /** Send MIDI directly to a target node (for control surfaces) */
+  sendMidiToNode: (nodeId: NodeId, event: MidiEvent) => Promise<void>;
+  /**
+   * Smart dispatch: emits from source nodes, sends directly to receiver nodes.
+   * Use this for control surfaces that need to work with any node type.
+   */
+  dispatchMidiToNode: (nodeId: NodeId, event: MidiEvent) => Promise<void>;
+  /** Check if a node is a MIDI source (has midi_out port) */
+  isMidiSource: (nodeId: NodeId) => boolean;
 };
 
 const MidiContext = createContext<MidiContextValue | null>(null);
@@ -103,7 +116,41 @@ export function MidiProvider({
     [drainQueue]
   );
 
-  const value: MidiContextValue = { emitMidi };
+  const sendMidiToNode = useCallback(
+    async (nodeId: NodeId, event: MidiEvent): Promise<void> => {
+      const currentGraph = graphRef.current;
+      await onEnsureAudioRunningRef.current?.(currentGraph);
+      getAudioEngine().dispatchMidiDirect(currentGraph, nodeId, event);
+    },
+    []
+  );
+
+  const isMidiSource = useCallback((nodeId: NodeId): boolean => {
+    const currentGraph = graphRef.current;
+    const node = currentGraph.nodes.find((n) => n.id === nodeId);
+    if (!node) return false;
+
+    const mod = NODE_MODULES[node.type as keyof typeof NODE_MODULES];
+    if (!mod) return false;
+
+    const ports = mod.graph.ports(node.state as any);
+    return ports.some(
+      (p) => p.kind === "midi" && p.direction === "out"
+    );
+  }, []);
+
+  const dispatchMidiToNode = useCallback(
+    async (nodeId: NodeId, event: MidiEvent): Promise<void> => {
+      if (isMidiSource(nodeId)) {
+        await emitMidi(nodeId, event);
+      } else {
+        await sendMidiToNode(nodeId, event);
+      }
+    },
+    [isMidiSource, emitMidi, sendMidiToNode]
+  );
+
+  const value: MidiContextValue = { emitMidi, sendMidiToNode, dispatchMidiToNode, isMidiSource };
 
   return (
     <MidiContext.Provider value={value}>
@@ -118,4 +165,46 @@ export function useMidi(): MidiContextValue {
     throw new Error("useMidi must be used within MidiProvider");
   }
   return ctx;
+}
+
+/**
+ * Subscribe to MIDI events dispatched to a specific node.
+ * Returns a Set of currently active (held) notes.
+ */
+export function useMidiActiveNotes(nodeId: NodeId | null): Set<number> {
+  const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!nodeId) {
+      setActiveNotes(new Set());
+      return;
+    }
+
+    const engine = getAudioEngine();
+    const unsubscribe = engine.onMidiDispatch((evt: MidiDispatchEvent) => {
+      if (evt.nodeId !== nodeId) return;
+
+      const { event } = evt;
+      if (event.type === "noteOn") {
+        setActiveNotes((prev) => {
+          const next = new Set(prev);
+          next.add(event.note);
+          return next;
+        });
+      } else if (event.type === "noteOff") {
+        setActiveNotes((prev) => {
+          const next = new Set(prev);
+          next.delete(event.note);
+          return next;
+        });
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      setActiveNotes(new Set());
+    };
+  }, [nodeId]);
+
+  return activeNotes;
 }

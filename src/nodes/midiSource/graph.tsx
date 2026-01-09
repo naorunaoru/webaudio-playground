@@ -55,6 +55,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
               borderColor: isHeld ? "rgba(168, 85, 247, 0.55)" : undefined,
             }}
             onPointerDown={async (e) => {
+              e.stopPropagation();
               if (activePointerIdRef.current != null) return;
               activePointerIdRef.current = e.pointerId;
               (e.currentTarget as HTMLButtonElement).setPointerCapture(

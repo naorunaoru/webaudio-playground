@@ -1,2 +1,2 @@
 export { SelectionProvider, useSelection } from "./SelectionContext";
-export { MidiProvider, useMidi } from "./MidiContext";
+export { MidiProvider, useMidi, useMidiActiveNotes } from "./MidiContext";

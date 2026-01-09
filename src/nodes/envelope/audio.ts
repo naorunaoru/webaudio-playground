@@ -55,6 +55,9 @@ function createEnvelopeRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeIns
   let lastMidiAtMs: number | null = null;
   let lastMidiOffAtMs: number | null = null;
 
+  // Track active notes for control surface display (polyphonic tracking)
+  const activeNotes = new Set<number>();
+
   function levelAtElapsedSec(elapsedSec: number, state: EnvelopeRuntimeState): number {
     const env = state.env;
     const a = Math.max(0, env.attackMs) / 1000;
@@ -145,10 +148,12 @@ function createEnvelopeRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeIns
       if (event.type === "noteOn") {
         lastMidiAtMs = event.atMs;
         lastMidiOffAtMs = null;
+        activeNotes.add(event.note);
         applyEnvelopeNoteOn(event, state);
       }
       if (event.type === "noteOff") {
         lastMidiOffAtMs = event.atMs;
+        activeNotes.delete(event.note);
         applyEnvelopeNoteOff(event, state);
       }
     },
@@ -164,6 +169,7 @@ function createEnvelopeRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeIns
     getRuntimeState: () => ({
       lastMidiAtMs,
       lastMidiOffAtMs,
+      activeNotes: Array.from(activeNotes),
     }),
   };
 }
