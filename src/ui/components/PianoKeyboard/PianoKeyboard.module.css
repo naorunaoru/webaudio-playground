@@ -1,0 +1,101 @@
+.keyboard {
+  --white-key-width: 28px;
+  --white-key-height: 100px;
+  --white-key-gap: 2px;
+  --black-key-width: 18px;
+  --black-key-height: 60px;
+
+  position: relative;
+  display: inline-block;
+  user-select: none;
+}
+
+.keyboard[data-disabled="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.whiteKeys {
+  display: flex;
+  gap: 2px;
+}
+
+.whiteKey {
+  width: var(--white-key-width);
+  height: var(--white-key-height);
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-radius: 0 0 4px 4px;
+  background: linear-gradient(to bottom, #f8f8f8 0%, #e8e8e8 100%);
+  cursor: pointer;
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  transition: background 50ms;
+}
+
+.whiteKey:hover:not([data-active="true"]) {
+  background: linear-gradient(to bottom, #fff 0%, #f0f0f0 100%);
+}
+
+.whiteKey[data-active="true"] {
+  background: linear-gradient(to bottom, #a78bfa 0%, #8b5cf6 100%);
+}
+
+.whiteKey:active,
+.whiteKey[data-active="true"] {
+  transform: translateY(1px);
+}
+
+.blackKeys {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.blackKey {
+  position: absolute;
+  width: var(--black-key-width);
+  height: var(--black-key-height);
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 0 0 3px 3px;
+  background: linear-gradient(to bottom, #3a3a3a 0%, #1a1a1a 100%);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 50ms;
+}
+
+.blackKey:hover:not([data-active="true"]) {
+  background: linear-gradient(to bottom, #4a4a4a 0%, #2a2a2a 100%);
+}
+
+.blackKey[data-active="true"] {
+  background: linear-gradient(to bottom, #7c3aed 0%, #5b21b6 100%);
+}
+
+.blackKey:active,
+.blackKey[data-active="true"] {
+  transform: translateY(1px);
+}
+
+.keyLabel {
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.4);
+  padding-bottom: 4px;
+}
+
+.disabledOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}

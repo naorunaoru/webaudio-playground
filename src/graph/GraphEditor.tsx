@@ -14,8 +14,6 @@ import type {
   ConnectionEndpoint,
   GraphConnection,
   GraphNode,
-  GraphState,
-  Selected,
 } from "./types";
 import { getNodeDef, portKindColor } from "./nodeRegistry";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
@@ -24,7 +22,6 @@ import { canConnect, portMetaForNode } from "./graphUtils";
 import {
   useAudioLevels,
   useDragInteraction,
-  useMidiDispatch,
   useNodeWidths,
 } from "./hooks";
 import {
@@ -35,10 +32,10 @@ import {
 } from "./components";
 import { createId } from "./id";
 import { useGraphDoc } from "../state";
+import { useSelection, useMidi } from "../contexts";
 
 export type GraphEditorProps = Readonly<{
   audioState: AudioContextState | "off";
-  onEnsureAudioRunning?: (graph: GraphState) => Promise<void>;
 }>;
 
 export type GraphEditorHandle = Readonly<{
@@ -46,7 +43,7 @@ export type GraphEditorHandle = Readonly<{
 }>;
 
 export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
-  function GraphEditor({ audioState, onEnsureAudioRunning }, ref) {
+  function GraphEditor({ audioState }, ref) {
     const rootRef = useRef<HTMLDivElement | null>(null);
     const scrollRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
@@ -55,7 +52,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       moveNode,
       deleteNode,
       patchNode,
-      patchMultipleNodesEphemeral,
       addConnection,
       deleteConnection,
       setZOrder,
@@ -63,16 +59,13 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       endBatch,
     } = useGraphDoc();
 
-    const [selected, setSelected] = useState<Selected>({ type: "none" });
     const [status, setStatus] = useState<string | null>(null);
+
+    const { selected, selectNode, selectConnection, deselect } = useSelection();
+    const { emitMidi } = useMidi();
 
     const { nodeWidths, registerNodeEl } = useNodeWidths();
     const { levels, runtimeState } = useAudioLevels(audioState);
-    const { emitMidi } = useMidiDispatch({
-      graph: graph!,
-      onEnsureAudioRunning,
-      onPatchNodesEphemeral: patchMultipleNodesEphemeral,
-    });
 
     const handleMoveNode = useCallback(
       (nodeId: string, x: number, y: number) => {
@@ -242,25 +235,25 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         if (e.key === "Backspace" || e.key === "Delete") {
           if (selected.type === "node") {
             deleteNode(selected.nodeId);
-            setSelected({ type: "none" });
+            deselect();
             return;
           }
           if (selected.type === "connection") {
             deleteConnection(selected.connectionId);
-            setSelected({ type: "none" });
+            deselect();
           }
         }
         if (e.key === "Escape") {
           setDrag({ type: "none" });
-          setSelected({ type: "none" });
+          deselect();
         }
       },
-      [selected, setDrag, deleteNode, deleteConnection]
+      [selected, setDrag, deleteNode, deleteConnection, deselect]
     );
 
     const handleSelectNode = useCallback(
       (nodeId: string) => {
-        setSelected({ type: "node", nodeId });
+        selectNode(nodeId);
 
         if (!graph) return;
 
@@ -284,12 +277,12 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
         setZOrder(nodeId, newZ);
       },
-      [graph, setZOrder]
+      [graph, setZOrder, selectNode]
     );
 
     const handleSelectConnection = useCallback((connectionId: string) => {
-      setSelected({ type: "connection", connectionId });
-    }, []);
+      selectConnection(connectionId);
+    }, [selectConnection]);
 
     const handleFocusRoot = useCallback(() => {
       rootRef.current?.focus();

@@ -10,9 +10,12 @@ import {
   pickFile,
 } from "./project";
 import { GraphDocProvider, useGraphDoc } from "./state";
+import { SelectionProvider, MidiProvider } from "./contexts";
 import { createNode } from "./graph/graphUtils";
 import { MenuBar, MenuBarItem } from "./ui/components/MenuBar";
 import { MenuItem, MenuSeparator } from "./ui/components/Menu";
+import { FloatingPanel } from "./ui/components/FloatingPanel";
+import { PianoKeyboard } from "./ui/components/PianoKeyboard";
 import { NODE_MODULES } from "./nodes";
 
 function readAudioDspLoad(
@@ -37,6 +40,7 @@ function AppContent() {
     addNode,
     newDocument,
     importDocument,
+    patchMultipleNodesEphemeral,
     undo,
     redo,
     canUndo,
@@ -51,6 +55,7 @@ function AppContent() {
     "off"
   );
   const [dspLoad, setDspLoad] = useState<number | null>(null);
+  const [showKeyboard, setShowKeyboard] = useState(false);
 
   const ensureAudioRunning = useCallback(async (graph: GraphState | null) => {
     const engine = getAudioEngine();
@@ -166,69 +171,91 @@ function AppContent() {
   }
 
   return (
-    <div className={styles.shell}>
-      <GraphEditor
-        ref={graphEditorRef}
-        audioState={audioState}
+    <SelectionProvider>
+      <MidiProvider
+        graph={graphState}
         onEnsureAudioRunning={ensureAudioRunning}
-      />
+        onPatchNodesEphemeral={patchMultipleNodesEphemeral}
+      >
+        <div className={styles.shell}>
+          <GraphEditor
+            ref={graphEditorRef}
+            audioState={audioState}
+          />
 
-      <div className={styles.topBar}>
-        <MenuBar menuOffset={{ y: 6 }}>
-          <MenuBarItem label="File" index={0}>
-            <MenuItem onClick={handleNew}>New</MenuItem>
-            <MenuSeparator />
-            <MenuItem onClick={handleImport}>Import</MenuItem>
-            <MenuItem onClick={handleExport}>Export</MenuItem>
-          </MenuBarItem>
+          <div className={styles.topBar}>
+            <MenuBar menuOffset={{ y: 6 }}>
+              <MenuBarItem label="File" index={0}>
+                <MenuItem onClick={handleNew}>New</MenuItem>
+                <MenuSeparator />
+                <MenuItem onClick={handleImport}>Import</MenuItem>
+                <MenuItem onClick={handleExport}>Export</MenuItem>
+              </MenuBarItem>
 
-          <MenuBarItem label="Edit" index={1}>
-            <MenuItem onClick={undo} disabled={!canUndo}>
-              Undo{undoDescription ? `: ${undoDescription}` : ""}
-            </MenuItem>
-            <MenuItem onClick={redo} disabled={!canRedo}>
-              Redo{redoDescription ? `: ${redoDescription}` : ""}
-            </MenuItem>
-          </MenuBarItem>
+              <MenuBarItem label="Edit" index={1}>
+                <MenuItem onClick={undo} disabled={!canUndo}>
+                  Undo{undoDescription ? `: ${undoDescription}` : ""}
+                </MenuItem>
+                <MenuItem onClick={redo} disabled={!canRedo}>
+                  Redo{redoDescription ? `: ${redoDescription}` : ""}
+                </MenuItem>
+              </MenuBarItem>
 
-          <MenuBarItem label="Add" index={2}>
-            {Object.entries(NODE_MODULES).map(([type, mod]) => (
-              <MenuItem
-                key={type}
-                onClick={() => handleAddNode(type as GraphNode["type"])}
-              >
-                {mod.graph.title}
-              </MenuItem>
-            ))}
-          </MenuBarItem>
+              <MenuBarItem label="Add" index={2}>
+                {Object.entries(NODE_MODULES).map(([type, mod]) => (
+                  <MenuItem
+                    key={type}
+                    onClick={() => handleAddNode(type as GraphNode["type"])}
+                  >
+                    {mod.graph.title}
+                  </MenuItem>
+                ))}
+              </MenuBarItem>
 
-          <MenuBarItem label="Audio" index={3}>
-            <MenuItem
-              data-audio-toggle
-              onClick={async () => {
-                const engine = getAudioEngine();
-                const next = await engine.toggleRunning();
-                if (next === "running" && graphState)
-                  engine.syncGraph(graphState);
-                setAudioState(next);
-              }}
+              <MenuBarItem label="Audio" index={3}>
+                <MenuItem
+                  data-audio-toggle
+                  onClick={async () => {
+                    const engine = getAudioEngine();
+                    const next = await engine.toggleRunning();
+                    if (next === "running" && graphState)
+                      engine.syncGraph(graphState);
+                    setAudioState(next);
+                  }}
+                >
+                  {audioState === "running" ? "Stop Audio" : "Start Audio"}
+                </MenuItem>
+              </MenuBarItem>
+
+              <MenuBarItem label="View" index={4}>
+                <MenuItem onClick={() => setShowKeyboard((v) => !v)}>
+                  {showKeyboard ? "Hide Piano Keyboard" : "Show Piano Keyboard"}
+                </MenuItem>
+              </MenuBarItem>
+            </MenuBar>
+
+            <div
+              className={styles.toolbarStat}
+              title="Approximate audio DSP load from custom AudioWorklet processors (not total system CPU)."
             >
-              {audioState === "running" ? "Stop Audio" : "Start Audio"}
-            </MenuItem>
-          </MenuBarItem>
-        </MenuBar>
-
-        <div
-          className={styles.toolbarStat}
-          title="Approximate audio DSP load from custom AudioWorklet processors (not total system CPU)."
-        >
-          DSP:{" "}
-          <span className={styles.toolbarStatValue}>
-            {dspLoad == null ? "—" : `${Math.round(dspLoad * 100)}%`}
-          </span>
+              DSP:{" "}
+              <span className={styles.toolbarStatValue}>
+                {dspLoad == null ? "—" : `${Math.round(dspLoad * 100)}%`}
+              </span>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
+
+        <FloatingPanel
+          title="Piano Keyboard"
+          open={showKeyboard}
+          onClose={() => setShowKeyboard(false)}
+          defaultPosition={{ x: 100, y: window.innerHeight - 200 }}
+        >
+          <PianoKeyboard octaves={2} />
+        </FloatingPanel>
+      </MidiProvider>
+    </SelectionProvider>
   );
 }
 
