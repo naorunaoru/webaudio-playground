@@ -9,7 +9,7 @@ import {
 } from "react";
 import { type DocHandle } from "@automerge/automerge-repo";
 import * as Automerge from "@automerge/automerge";
-import type { GraphDoc, DocConnection } from "./types";
+import type { GraphDoc, DocConnection, DocUiState } from "./types";
 import type { GraphState, NodeId, ConnectionId, GraphNode } from "../graph/types";
 import { docToGraphState, graphStateToDoc } from "./converters";
 import {
@@ -93,6 +93,10 @@ type GraphDocContextValue = {
   /** Document operations */
   newDocument: () => void;
   importDocument: (graph: GraphState) => void;
+
+  /** UI state (persisted but no undo) */
+  uiState: DocUiState;
+  setKeyboardState: (state: { visible: boolean; x: number; y: number }) => void;
 };
 
 const GraphDocContext = createContext<GraphDocContextValue | null>(null);
@@ -520,6 +524,23 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     setGraphState(graph);
   }, []);
 
+  // UI state (persisted but no undo history)
+  const setKeyboardState = useCallback(
+    (state: { visible: boolean; x: number; y: number }) => {
+      if (!handle) return;
+
+      handle.change((doc) => {
+        if (!doc.meta.ui) {
+          doc.meta.ui = {};
+        }
+        doc.meta.ui.keyboard = state;
+      });
+    },
+    [handle]
+  );
+
+  const uiState: DocUiState = handle?.doc()?.meta.ui ?? {};
+
   const value: GraphDocContextValue = {
     graphState,
     isLoading,
@@ -543,6 +564,8 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     redoDescription: redoStack.length > 0 ? redoStack[redoStack.length - 1].description : null,
     newDocument,
     importDocument,
+    uiState,
+    setKeyboardState,
   };
 
   return (

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { NodeId } from "../../../graph/types";
 import { useSelection, useMidi, useMidiActiveNotes } from "../../../contexts";
 import styles from "./PianoKeyboard.module.css";
@@ -13,8 +13,10 @@ export interface PianoKeyboardProps {
   baseOctave?: number;
   /** Number of octaves to show (default: 2) */
   octaves?: number;
-  /** Fixed velocity (default: 100) */
-  velocity?: number;
+  /** Minimum velocity at top of key (default: 20) */
+  minVelocity?: number;
+  /** Maximum velocity at bottom of key (default: 127) */
+  maxVelocity?: number;
   /** MIDI channel (default: 1) */
   channel?: number;
 }
@@ -22,7 +24,8 @@ export interface PianoKeyboardProps {
 export function PianoKeyboard({
   baseOctave = 3,
   octaves = 2,
-  velocity = 100,
+  minVelocity = 20,
+  maxVelocity = 127,
   channel = 1,
 }: PianoKeyboardProps) {
   const { selected } = useSelection();
@@ -31,6 +34,7 @@ export function PianoKeyboard({
   // Track locally pressed keys (by pointer)
   const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set());
   const activePointers = useRef<Map<number, number>>(new Map()); // pointerId -> note
+  const draggingPointers = useRef<Set<number>>(new Set()); // pointers currently held down
 
   const targetNodeId: NodeId | null =
     selected.type === "node" ? selected.nodeId : null;
@@ -39,7 +43,7 @@ export function PianoKeyboard({
   const externalActiveNotes = useMidiActiveNotes(targetNodeId);
 
   const handleNoteOn = useCallback(
-    async (note: number, pointerId: number) => {
+    async (note: number, pointerId: number, velocity: number) => {
       if (!targetNodeId) return;
 
       activePointers.current.set(pointerId, note);
@@ -53,7 +57,7 @@ export function PianoKeyboard({
         atMs: performance.now(),
       });
     },
-    [targetNodeId, dispatchMidiToNode, velocity, channel]
+    [targetNodeId, dispatchMidiToNode, channel]
   );
 
   const handleNoteOff = useCallback(
@@ -80,18 +84,29 @@ export function PianoKeyboard({
     [targetNodeId, dispatchMidiToNode, channel]
   );
 
+  // Calculate velocity from pointer Y position within a key element
+  const calculateVelocity = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const relativeY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      return Math.round(minVelocity + relativeY * (maxVelocity - minVelocity));
+    },
+    [minVelocity, maxVelocity]
+  );
+
   const handlePointerDown = useCallback(
     (note: number) => (e: React.PointerEvent<HTMLButtonElement>) => {
       if (e.button !== 0) return;
       e.preventDefault();
-      (e.currentTarget as HTMLButtonElement).setPointerCapture(e.pointerId);
-      void handleNoteOn(note, e.pointerId);
+      draggingPointers.current.add(e.pointerId);
+      void handleNoteOn(note, e.pointerId, calculateVelocity(e));
     },
-    [handleNoteOn]
+    [handleNoteOn, calculateVelocity]
   );
 
   const handlePointerUp = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
+      draggingPointers.current.delete(e.pointerId);
       void handleNoteOff(e.pointerId);
     },
     [handleNoteOff]
@@ -99,10 +114,47 @@ export function PianoKeyboard({
 
   const handlePointerCancel = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
+      draggingPointers.current.delete(e.pointerId);
       void handleNoteOff(e.pointerId);
     },
     [handleNoteOff]
   );
+
+  const handlePointerEnter = useCallback(
+    (note: number) => (e: React.PointerEvent<HTMLButtonElement>) => {
+      // Only trigger if this pointer is currently dragging
+      if (!draggingPointers.current.has(e.pointerId)) return;
+      void handleNoteOn(note, e.pointerId, calculateVelocity(e));
+    },
+    [handleNoteOn, calculateVelocity]
+  );
+
+  const handlePointerLeave = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      // Only trigger if this pointer is currently dragging
+      if (!draggingPointers.current.has(e.pointerId)) return;
+      void handleNoteOff(e.pointerId);
+    },
+    [handleNoteOff]
+  );
+
+  // Global pointer up listener to handle releases outside the keyboard
+  useEffect(() => {
+    const handleGlobalPointerUp = (e: PointerEvent) => {
+      if (draggingPointers.current.has(e.pointerId)) {
+        draggingPointers.current.delete(e.pointerId);
+        void handleNoteOff(e.pointerId);
+      }
+    };
+
+    window.addEventListener("pointerup", handleGlobalPointerUp);
+    window.addEventListener("pointercancel", handleGlobalPointerUp);
+
+    return () => {
+      window.removeEventListener("pointerup", handleGlobalPointerUp);
+      window.removeEventListener("pointercancel", handleGlobalPointerUp);
+    };
+  }, [handleNoteOff]);
 
   // Build keys for all octaves
   const whiteKeys: { note: number; label: string }[] = [];
@@ -147,6 +199,8 @@ export function PianoKeyboard({
             onPointerDown={handlePointerDown(note)}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
+            onPointerEnter={handlePointerEnter(note)}
+            onPointerLeave={handlePointerLeave}
           >
             {label && <span className={styles.keyLabel}>{label}</span>}
           </button>
@@ -164,6 +218,8 @@ export function PianoKeyboard({
             onPointerDown={handlePointerDown(note)}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
+            onPointerEnter={handlePointerEnter(note)}
+            onPointerLeave={handlePointerLeave}
           />
         ))}
       </div>

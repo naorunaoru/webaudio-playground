@@ -14,6 +14,8 @@ export interface FloatingPanelProps {
   open: boolean;
   onClose: () => void;
   defaultPosition?: { x: number; y: number };
+  position?: { x: number; y: number };
+  onPositionChange?: (position: { x: number; y: number }) => void;
   children: ReactNode;
 }
 
@@ -22,14 +24,26 @@ export function FloatingPanel({
   open,
   onClose,
   defaultPosition,
+  position: controlledPosition,
+  onPositionChange,
   children,
 }: FloatingPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState(() => ({
-    x: defaultPosition?.x ?? 100,
-    y: defaultPosition?.y ?? 100,
+  const [internalPosition, setInternalPosition] = useState(() => ({
+    x: controlledPosition?.x ?? defaultPosition?.x ?? 100,
+    y: controlledPosition?.y ?? defaultPosition?.y ?? 100,
   }));
   const [isVisible, setIsVisible] = useState(false);
+
+  // Use controlled position if provided, otherwise internal
+  const position = controlledPosition ?? internalPosition;
+  const setPosition = useCallback(
+    (pos: { x: number; y: number }) => {
+      setInternalPosition(pos);
+      onPositionChange?.(pos);
+    },
+    [onPositionChange]
+  );
 
   // Animation on open
   useEffect(() => {

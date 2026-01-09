@@ -41,6 +41,15 @@ export type DocConnection = {
 export type DocMeta = {
   createdAt: number;
   lastModifiedAt: number;
+  ui?: DocUiState;
+};
+
+export type DocUiState = {
+  keyboard?: {
+    visible: boolean;
+    x: number;
+    y: number;
+  };
 };
 
 /**

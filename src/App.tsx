@@ -13,7 +13,7 @@ import { GraphDocProvider, useGraphDoc } from "./state";
 import { SelectionProvider, MidiProvider } from "./contexts";
 import { createNode } from "./graph/graphUtils";
 import { MenuBar, MenuBarItem } from "./ui/components/MenuBar";
-import { MenuItem, MenuSeparator } from "./ui/components/Menu";
+import { MenuItem, MenuItemCheckbox, MenuSeparator } from "./ui/components/Menu";
 import { FloatingPanel } from "./ui/components/FloatingPanel";
 import { PianoKeyboard } from "./ui/components/PianoKeyboard";
 import { NODE_MODULES } from "./nodes";
@@ -47,6 +47,8 @@ function AppContent() {
     canRedo,
     undoDescription,
     redoDescription,
+    uiState,
+    setKeyboardState,
   } = useGraphDoc();
 
   const graphEditorRef = useRef<GraphEditorHandle | null>(null);
@@ -55,7 +57,38 @@ function AppContent() {
     "off"
   );
   const [dspLoad, setDspLoad] = useState<number | null>(null);
-  const [showKeyboard, setShowKeyboard] = useState(false);
+
+  // Keyboard state from persisted UI state
+  const keyboardState = uiState.keyboard;
+  const showKeyboard = keyboardState?.visible ?? false;
+  const keyboardPosition = keyboardState
+    ? { x: keyboardState.x, y: keyboardState.y }
+    : undefined;
+
+  const defaultKeyboardPosition = { x: 100, y: window.innerHeight - 200 };
+
+  const setKeyboardVisible = useCallback(
+    (visible: boolean) => {
+      const currentPos = keyboardPosition ?? defaultKeyboardPosition;
+      setKeyboardState({
+        visible,
+        x: currentPos.x,
+        y: currentPos.y,
+      });
+    },
+    [keyboardPosition, setKeyboardState]
+  );
+
+  const handleKeyboardPositionChange = useCallback(
+    (pos: { x: number; y: number }) => {
+      setKeyboardState({ visible: true, x: pos.x, y: pos.y });
+    },
+    [setKeyboardState]
+  );
+
+  const handleKeyboardClose = useCallback(() => {
+    setKeyboardVisible(false);
+  }, [setKeyboardVisible]);
 
   const ensureAudioRunning = useCallback(async (graph: GraphState | null) => {
     const engine = getAudioEngine();
@@ -228,9 +261,9 @@ function AppContent() {
               </MenuBarItem>
 
               <MenuBarItem label="View" index={4}>
-                <MenuItem onClick={() => setShowKeyboard((v) => !v)}>
-                  {showKeyboard ? "Hide Piano Keyboard" : "Show Piano Keyboard"}
-                </MenuItem>
+                <MenuItemCheckbox checked={showKeyboard} onChange={setKeyboardVisible}>
+                  Piano Keyboard
+                </MenuItemCheckbox>
               </MenuBarItem>
             </MenuBar>
 
@@ -249,8 +282,10 @@ function AppContent() {
         <FloatingPanel
           title="Piano Keyboard"
           open={showKeyboard}
-          onClose={() => setShowKeyboard(false)}
-          defaultPosition={{ x: 100, y: window.innerHeight - 200 }}
+          onClose={handleKeyboardClose}
+          defaultPosition={defaultKeyboardPosition}
+          position={keyboardPosition}
+          onPositionChange={handleKeyboardPositionChange}
         >
           <PianoKeyboard octaves={2} />
         </FloatingPanel>
