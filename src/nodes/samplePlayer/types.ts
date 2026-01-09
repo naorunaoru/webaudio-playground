@@ -5,6 +5,7 @@ export type SamplePlayerState = {
   followPitch: boolean;
   rootNote: number; // 0..127
   stopOnNoteOff: boolean;
+  loop: boolean;
 };
 
 declare module "../../graph/types" {

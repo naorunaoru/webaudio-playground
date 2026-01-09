@@ -95,6 +95,7 @@ function createSamplePlayerRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNod
         const src = ctx.createBufferSource();
         src.buffer = buffer;
         src.playbackRate.value = pitchRatio;
+        src.loop = state.loop;
 
         const voiceGain = ctx.createGain();
         voiceGain.gain.value = velocity01;
