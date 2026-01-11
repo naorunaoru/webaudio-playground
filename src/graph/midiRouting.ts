@@ -47,31 +47,6 @@ export function routeMidi(
         });
     }
 
-    if (node.type === "oscillator" && event.type === "noteOn") {
-      const visited = new Set<NodeId>();
-      const audioQueue: NodeId[] = [node.id];
-      while (audioQueue.length > 0) {
-        const currentNodeId = audioQueue.shift()!;
-        if (visited.has(currentNodeId)) continue;
-        visited.add(currentNodeId);
-
-        const outgoing = graph.connections.filter(
-          (c) => c.kind === "audio" && c.from.nodeId === currentNodeId
-        );
-        for (const conn of outgoing) {
-          const toNode = findNode(graph, conn.to.nodeId);
-          if (toNode?.type === "audioOut") {
-            nodePatches.set(conn.to.nodeId, {
-              ...(nodePatches.get(conn.to.nodeId) ?? {}),
-              lastAudioAtMs: event.atMs,
-            });
-          } else {
-            audioQueue.push(conn.to.nodeId);
-          }
-        }
-      }
-    }
-
     const outgoing = graph.connections.filter(
       (c) => c.kind === edgeKind && c.from.nodeId === node.id
     );
@@ -128,31 +103,6 @@ export function computeMidiPatches(
           ...(nodePatches.get(node.id) ?? {}),
           ...patch,
         });
-    }
-
-    if (node.type === "oscillator" && event.type === "noteOn") {
-      const visited = new Set<NodeId>();
-      const audioQueue: NodeId[] = [node.id];
-      while (audioQueue.length > 0) {
-        const currentNodeId = audioQueue.shift()!;
-        if (visited.has(currentNodeId)) continue;
-        visited.add(currentNodeId);
-
-        const outgoing = graph.connections.filter(
-          (c) => c.kind === "audio" && c.from.nodeId === currentNodeId
-        );
-        for (const conn of outgoing) {
-          const toNode = findNode(graph, conn.to.nodeId);
-          if (toNode?.type === "audioOut") {
-            nodePatches.set(conn.to.nodeId, {
-              ...(nodePatches.get(conn.to.nodeId) ?? {}),
-              lastAudioAtMs: event.atMs,
-            });
-          } else {
-            audioQueue.push(conn.to.nodeId);
-          }
-        }
-      }
     }
 
     const outgoing = graph.connections.filter(

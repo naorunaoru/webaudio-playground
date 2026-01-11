@@ -9,7 +9,7 @@ import type {
 type AudioOutNode = Extract<GraphNode, { type: "audioOut" }>;
 
 function defaultState(): AudioOutNode["state"] {
-  return { lastAudioAtMs: null };
+  return {};
 }
 
 const AudioOutUi: React.FC<NodeUiProps<AudioOutNode>> = ({ node }) => {
@@ -89,12 +89,7 @@ const AudioOutUi: React.FC<NodeUiProps<AudioOutNode>> = ({ node }) => {
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
-      <div style={{ fontSize: 12, opacity: 0.75 }}>Destination</div>
-      <div style={{ fontSize: 12, opacity: 0.8 }}>
-        Audio activity: {node.state.lastAudioAtMs ? "active" : "—"}
-      </div>
       <div style={{ display: "grid", gap: 6 }}>
-        <div style={{ fontSize: 12, opacity: 0.75 }}>Oscilloscope</div>
         <canvas
           ref={canvasRef}
           style={{
@@ -118,9 +113,5 @@ export const audioOutGraph: NodeDefinition<AudioOutNode> = {
     { id: "audio_in", name: "Audio", kind: "audio", direction: "in" },
   ],
   ui: AudioOutUi,
-  normalizeState: (state) => {
-    const s = (state ?? {}) as Partial<AudioOutNode["state"]>;
-    const d = defaultState();
-    return { lastAudioAtMs: s.lastAudioAtMs ?? d.lastAudioAtMs };
-  },
+  normalizeState: () => ({}),
 };

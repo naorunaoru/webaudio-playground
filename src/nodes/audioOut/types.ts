@@ -1,6 +1,4 @@
-export type AudioOutState = {
-  lastAudioAtMs: number | null;
-};
+export type AudioOutState = Record<string, never>;
 
 declare module "../../graph/types" {
   interface NodeTypeMap {
