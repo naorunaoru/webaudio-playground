@@ -1,13 +1,13 @@
 import type { GraphNode, NodeId } from "@graph/types";
 import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
 import type { AudioNodeServices } from "@/types/nodeModule";
-import { rmsFromAnalyser } from "@utils/audio";
-import { clamp } from "@utils/math";
+import { clamp } from "@/utils/math";
+import { rmsFromAnalyser } from "@/utils/audio";
 
 type GainGraphNode = Extract<GraphNode, { type: "gain" }>;
 
 export type GainRuntimeState = {
-  modulatedGain: number;
+  modulatedCv: number;
 };
 
 function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstance<GainGraphNode> {
@@ -16,25 +16,24 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
   const vca = ctx.createGain();
   vca.gain.value = 0;
 
-  const cv = ctx.createGain();
-  cv.gain.value = 1;
-  cv.connect(vca.gain);
+  const base = ctx.createConstantSource();
+  base.offset.value = 0;
+  base.connect(vca.gain);
+  base.start();
 
-  // Provide a constant 1.0 signal so that when no automation is connected,
-  // the gain equals depth. When automation is connected, disconnect this.
-  const constantOne = ctx.createConstantSource();
-  constantOne.offset.value = 1;
-  constantOne.connect(cv);
-  constantOne.start();
-  let constantConnected = true;
+  const cvIn = ctx.createGain();
+  cvIn.gain.value = 1;
+  const cvAmount = ctx.createGain();
+  cvAmount.gain.value = 1;
+  cvIn.connect(cvAmount);
+  cvAmount.connect(vca.gain);
 
-  // Measure the CV signal going to vca.gain
-  // We tap cv's output which carries: (envelope_input * depth)
+  // Meter to read the CV signal (cvIn * depth)
   const cvMeter = ctx.createAnalyser();
   cvMeter.fftSize = 256;
   cvMeter.smoothingTimeConstant = 0.8;
   const cvMeterBuffer = new Float32Array(cvMeter.fftSize) as Float32Array<ArrayBufferLike>;
-  cv.connect(cvMeter);
+  cvAmount.connect(cvMeter);
 
   const meter = ctx.createAnalyser();
   meter.fftSize = 256;
@@ -48,11 +47,12 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
     type: "gain",
     updateState: (state) => {
       const now = ctx.currentTime;
-      cv.gain.setTargetAtTime(clamp(state.depth, 0, 2), now, 0.02);
+      base.offset.setTargetAtTime(clamp(state.base, 0, 2), now, 0.02);
+      cvAmount.gain.setTargetAtTime(clamp(state.depth, 0, 2), now, 0.02);
     },
     getAudioInput: (portId) => {
       if (portId === "audio_in") return input;
-      if (portId === "gain_in") return cv;
+      if (portId === "gain_in") return cvIn;
       return null;
     },
     getAudioOutput: (portId) => {
@@ -61,38 +61,38 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
     },
     onRemove: () => {
       meter.disconnect();
+      cvMeter.disconnect();
       vca.disconnect();
       input.disconnect();
-      cvMeter.disconnect();
       try {
-        constantOne.stop();
-        constantOne.disconnect();
-        cv.disconnect();
+        cvAmount.disconnect();
+      } catch {
+        // ignore
+      }
+      try {
+        cvIn.disconnect();
+      } catch {
+        // ignore
+      }
+      try {
+        base.disconnect();
+      } catch {
+        // ignore
+      }
+      try {
+        base.stop();
       } catch {
         // ignore
       }
     },
     getLevel: () => rmsFromAnalyser(meter, meterBuffer),
-    onConnectionsChanged: ({ inputs }) => {
-      const hasGainIn = inputs.has("gain_in");
-      if (hasGainIn && constantConnected) {
-        // Automation connected, disconnect the constant source
-        constantOne.disconnect(cv);
-        constantConnected = false;
-      } else if (!hasGainIn && !constantConnected) {
-        // Automation disconnected, reconnect the constant source
-        constantOne.connect(cv);
-        constantConnected = true;
-      }
-    },
     getRuntimeState: (): GainRuntimeState => {
-      // Read the average value from the CV meter (envelope * depth)
       cvMeter.getFloatTimeDomainData(cvMeterBuffer as any);
       let sum = 0;
       for (let i = 0; i < cvMeterBuffer.length; i++) {
         sum += cvMeterBuffer[i] ?? 0;
       }
-      return { modulatedGain: sum / cvMeterBuffer.length };
+      return { modulatedCv: sum / cvMeterBuffer.length };
     },
   };
 }
@@ -103,4 +103,3 @@ export function gainAudioFactory(_services: AudioNodeServices): AudioNodeFactory
     create: (ctx, nodeId) => createGainRuntime(ctx, nodeId),
   };
 }
-

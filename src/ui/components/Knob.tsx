@@ -76,7 +76,8 @@ export function Knob({
   const startAngle = -135;
   const endAngle = 135;
   const angle = startAngle + normalized * (endAngle - startAngle);
-  const modulationAngle = startAngle + modulationNormalized * (endAngle - startAngle);
+  const modulationAngle =
+    startAngle + modulationNormalized * (endAngle - startAngle);
 
   // SVG dimensions derived from base size
   const size = KNOB_SIZE;
@@ -127,7 +128,8 @@ export function Knob({
   // When modulationValue is provided, arc shows modulated value; otherwise shows base value
   const renderIndicatorArc = () => {
     const arcAngle = modulationValue !== undefined ? modulationAngle : angle;
-    const arcNormalized = modulationValue !== undefined ? modulationNormalized : normalized;
+    const arcNormalized =
+      modulationValue !== undefined ? modulationNormalized : normalized;
 
     switch (indicator) {
       case "bipolar": {
@@ -183,8 +185,18 @@ export function Knob({
           alignItems: "center",
         }}
       >
-        {label && labelPosition === "left" && <Label text={label} position={labelPosition} />}
-        <div style={{ width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {label && labelPosition === "left" && (
+          <Label text={label} position={labelPosition} />
+        )}
+        <div
+          style={{
+            width: size,
+            height: size,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
           <NumericInput
             value={value}
             onChange={handleEditChange}
@@ -197,7 +209,9 @@ export function Knob({
             onBlur={handleEditBlur}
           />
         </div>
-        {label && labelPosition !== "left" && <Label text={label} position={labelPosition} />}
+        {label && labelPosition !== "left" && (
+          <Label text={label} position={labelPosition} />
+        )}
       </div>
     );
   }
@@ -259,9 +273,13 @@ export function Knob({
         onPointerDown={handlePointerDown}
         onDoubleClick={handleDoubleClick}
       >
-        {label && labelPosition === "left" && <Label text={label} position={labelPosition} />}
+        {label && labelPosition === "left" && (
+          <Label text={label} position={labelPosition} />
+        )}
         {knobSvg}
-        {label && labelPosition !== "left" && <Label text={label} position={labelPosition} />}
+        {label && labelPosition !== "left" && (
+          <Label text={label} position={labelPosition} />
+        )}
       </div>
     </Tooltip>
   );
