@@ -4,7 +4,7 @@ import type {
   NodeDefinition,
   NodeUiProps,
 } from "@/types/graphNodeDefinition";
-import { Button, NumericInput } from "@ui/components";
+import { Button, MidiNoteInput, NumericInput } from "@ui/components";
 import { ThemeProvider } from "@ui/context";
 import type { ControlTheme } from "@ui/types/theme";
 
@@ -112,14 +112,10 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
           </Button>
         </div>
         <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
-          <NumericInput
+          <MidiNoteInput
             value={node.state.note}
             onChange={(v) => onPatchNode(node.id, { note: Math.round(v) })}
-            min={0}
-            max={127}
-            step={1}
             label="Note"
-            format={(v) => Math.round(v).toString()}
             width={48}
             onDragStart={startBatch}
             onDragEnd={endBatch}

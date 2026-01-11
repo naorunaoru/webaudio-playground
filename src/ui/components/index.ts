@@ -10,6 +10,9 @@ export type { LabelProps } from './Label';
 export { NumericInput } from './NumericInput';
 export type { NumericInputProps } from './NumericInput';
 
+export { MidiNoteInput } from './MidiNoteInput';
+export type { MidiNoteInputProps } from './MidiNoteInput';
+
 export { Tooltip } from './Tooltip';
 export type { TooltipProps } from './Tooltip';
 

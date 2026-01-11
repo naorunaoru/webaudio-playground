@@ -5,7 +5,7 @@ import type {
   NodeDefinition,
   NodeUiProps,
 } from "@/types/graphNodeDefinition";
-import { Button, Knob, NumericInput, RadioGroup } from "@ui/components";
+import { Button, Knob, MidiNoteInput, RadioGroup } from "@ui/components";
 import { SampleLibraryPanel } from "@ui/components/SampleLibraryPanel";
 import { ThemeProvider } from "@ui/context";
 import type { ControlTheme, OptionDef } from "@ui/types";
@@ -145,14 +145,10 @@ const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({
             onDragStart={startBatch}
             onDragEnd={endBatch}
           />
-          <NumericInput
+          <MidiNoteInput
             value={clamp(node.state.rootNote, 0, 127)}
             onChange={(v) => onPatchNode(node.id, { rootNote: Math.round(v) })}
-            min={0}
-            max={127}
-            step={1}
             label="Root note"
-            format={(v) => Math.round(v).toString()}
             onDragStart={startBatch}
             onDragEnd={endBatch}
           />
