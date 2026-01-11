@@ -9,6 +9,8 @@ export type EnvelopeEnv = {
   decayShape: number;
   /** Curve shape in range [-1..1]. 0 = linear. Positive = more exponential-like. */
   releaseShape: number;
+  /** If true, envelope resets to 0 on each note trigger. If false (default), continues from current level. */
+  retrigger: boolean;
 };
 
 export type EnvelopeState = {

@@ -1,10 +1,12 @@
-import type { GraphNode, MidiEvent } from "../../graph/types";
+import type { GraphNode } from "../../graph/types";
 import { useRuntimeStateGetter } from "../../graph/hooks";
 import type {
   NodeDefinition,
   NodeUiProps,
 } from "../../types/graphNodeDefinition";
+import { Button } from "../../ui/components/Button";
 import { EnvelopeEditor } from "../../ui/components/EnvelopeEditor";
+import { Label } from "../../ui/components/Label";
 import { NumericInput } from "../../ui/components/NumericInput";
 import { ThemeProvider } from "../../ui/context";
 import type { ControlTheme } from "../../ui/types/theme";
@@ -42,27 +44,11 @@ function defaultState(): EnvelopeNode["state"] {
       attackShape: 0.6,
       decayShape: 0.6,
       releaseShape: 0.6,
+      retrigger: true,
     },
   };
 }
 
-function mapCcToEnvPatch(
-  node: EnvelopeNode,
-  portId: string | null,
-  event: MidiEvent
-) {
-  if (event.type !== "cc") return null;
-  const v01 = clamp01(event.value / 127);
-  if (portId === "cc_attack")
-    return { env: { ...node.state.env, attackMs: clampMs(v01 * 2000) } };
-  if (portId === "cc_decay")
-    return { env: { ...node.state.env, decayMs: clampMs(v01 * 2000) } };
-  if (portId === "cc_sustain")
-    return { env: { ...node.state.env, sustain: v01 } };
-  if (portId === "cc_release")
-    return { env: { ...node.state.env, releaseMs: clampMs(v01 * 2000) } };
-  return null;
-}
 
 const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
   node,
@@ -84,7 +70,33 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
           onDragEnd={endBatch}
         />
 
-        <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            justifyContent: "center",
+            alignItems: "flex-end",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+            }}
+          >
+            <Button
+              aria-pressed={env.retrigger}
+              onClick={() =>
+                onPatchNode(node.id, {
+                  env: { ...env, retrigger: !env.retrigger },
+                })
+              }
+            >
+              {env.retrigger ? "On" : "Off"}
+            </Button>
+            <Label text="Retrig" />
+          </div>
           <NumericInput
             value={env.attackMs}
             onChange={(v) =>
@@ -156,10 +168,6 @@ export const envelopeGraph: NodeDefinition<EnvelopeNode> = {
   defaultState,
   ports: () => [
     { id: "midi_in", name: "MIDI", kind: "midi", direction: "in" },
-    { id: "cc_attack", name: "A", kind: "cc", direction: "in" },
-    { id: "cc_decay", name: "D", kind: "cc", direction: "in" },
-    { id: "cc_sustain", name: "S", kind: "cc", direction: "in" },
-    { id: "cc_release", name: "R", kind: "cc", direction: "in" },
     { id: "env_out", name: "Env", kind: "automation", direction: "out" },
   ],
   ui: EnvelopeUi,
@@ -185,11 +193,8 @@ export const envelopeGraph: NodeDefinition<EnvelopeNode> = {
             curveToShape(env.releaseCurve) ??
             d.env.releaseShape
         ),
+        retrigger: env.retrigger ?? d.env.retrigger,
       },
     };
-  },
-  onMidi: (node, event, portId) => {
-    // CC events still update envelope parameters
-    return mapCcToEnvPatch(node, portId, event);
   },
 };

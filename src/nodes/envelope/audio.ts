@@ -124,7 +124,7 @@ function createEnvelopeRuntime(
 
     const g = amp.gain;
     g.cancelScheduledValues(now);
-    noteOnStartLevel = Math.max(0, g.value);
+    noteOnStartLevel = env.retrigger ? 0 : Math.max(0, g.value);
     g.setValueAtTime(noteOnStartLevel, now);
 
     noteOnAtSec = now;
