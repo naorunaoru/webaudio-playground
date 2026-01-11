@@ -1,23 +1,21 @@
 import { useEffect, useState } from "react";
 import { getAudioEngine } from "../../audio/engine";
-import {
-  shallowEqualNumberRecord,
-  shallowEqualRecordByValueRef,
-} from "../shallowEqual";
+import { shallowEqualRecordByValueRef } from "../shallowEqual";
 
+/**
+ * Hook for polling runtime state from the audio engine.
+ * Note: Audio levels are no longer tracked here - they are read directly
+ * by NodeMeter components using requestAnimationFrame for smooth updates
+ * without React re-renders.
+ */
 export function useAudioLevels(audioState: AudioContextState | "off") {
-  const [levels, setLevels] = useState<Record<string, number>>({});
   const [runtimeState, setRuntimeState] = useState<Record<string, unknown>>({});
 
   useEffect(() => {
     if (audioState === "running") {
       const interval = window.setInterval(() => {
         const engine = getAudioEngine();
-        const nextLevels = engine.getLevels();
         const nextRuntimeState = engine.getRuntimeState();
-        setLevels((prev) =>
-          shallowEqualNumberRecord(prev, nextLevels) ? prev : nextLevels
-        );
         setRuntimeState((prev) =>
           shallowEqualRecordByValueRef(prev, nextRuntimeState)
             ? prev
@@ -26,10 +24,9 @@ export function useAudioLevels(audioState: AudioContextState | "off") {
       }, 100);
       return () => window.clearInterval(interval);
     } else {
-      setLevels({});
       setRuntimeState({});
     }
   }, [audioState]);
 
-  return { levels, runtimeState };
+  return { runtimeState };
 }

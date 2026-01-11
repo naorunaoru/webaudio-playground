@@ -1,0 +1,143 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 280px;
+  max-height: 400px;
+}
+
+.importRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.importButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(231, 231, 231, 0.9);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 100ms, border-color 100ms;
+}
+
+.importButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.importButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.sampleList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  max-height: 300px;
+  margin: 0 -10px;
+  padding: 0 10px;
+}
+
+.sampleItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: background 100ms;
+}
+
+.sampleItem:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.sampleItem[data-selected="true"] {
+  background: rgba(167, 139, 250, 0.2);
+}
+
+.sampleName {
+  flex: 1;
+  font-size: 12px;
+  color: rgba(231, 231, 231, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sampleSize {
+  font-size: 10px;
+  color: rgba(231, 231, 231, 0.5);
+  flex-shrink: 0;
+}
+
+.iconButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: rgba(231, 231, 231, 0.5);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 100ms, color 100ms;
+}
+
+.iconButton:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(231, 231, 231, 0.9);
+}
+
+.iconButton:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.iconButton[data-playing="true"] {
+  color: #a78bfa;
+}
+
+.deleteButton:hover {
+  color: #f87171;
+}
+
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  gap: 8px;
+  color: rgba(231, 231, 231, 0.5);
+  font-size: 12px;
+  text-align: center;
+}
+
+.emptyIcon {
+  opacity: 0.3;
+}
+
+.error {
+  font-size: 11px;
+  color: rgba(248, 113, 113, 0.9);
+  padding: 6px 8px;
+  background: rgba(248, 113, 113, 0.1);
+  border-radius: 4px;
+}

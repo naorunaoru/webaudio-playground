@@ -1,3 +1,6 @@
+export { Button } from './Button';
+export type { ButtonProps } from './Button';
+
 export { Knob } from './Knob';
 export type { KnobProps } from './Knob';
 

@@ -15,7 +15,7 @@ import type {
   GraphConnection,
   GraphNode,
 } from "./types";
-import { getNodeDef, portKindColor } from "./nodeRegistry";
+import { getNodeDef } from "./nodeRegistry";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
 import { bezierPath } from "./coordinates";
 import { canConnect, portMetaForNode } from "./graphUtils";
@@ -65,7 +65,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     const { emitMidi } = useMidi();
 
     const { nodeWidths, registerNodeEl } = useNodeWidths();
-    const { levels, runtimeState } = useAudioLevels(audioState);
+    const { runtimeState } = useAudioLevels(audioState);
 
     const handleMoveNode = useCallback(
       (nodeId: string, x: number, y: number) => {
@@ -329,20 +329,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           <div className={styles.nodesLayer}>
             <div className={styles.nodesLayerInner}>
               {renderCache.nodes.map(({ node, def: { title }, ports, Ui }) => {
-                const audioLevel = levels[node.id] ?? 0;
-                const normalized = Math.max(0, Math.min(1, audioLevel / 0.12));
-                const meterOpacity =
-                  node.type === "audioOut"
-                    ? 0.15 + normalized * 0.8
-                    : normalized * 0.95;
-
-                const meterVisible =
-                  node.type === "audioOut" || levels[node.id] != null;
-                const meterColor =
-                  node.type === "audioOut"
-                    ? "rgba(236, 239, 244, 1)"
-                    : portKindColor("audio");
-
                 const midiVisible =
                   node.type === "midiSource" && !!node.state.isEmitting;
 
@@ -356,9 +342,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                       selected.type === "node" && selected.nodeId === node.id
                     }
                     zIndex={graph.nodeZOrder?.[node.id] ?? 0}
-                    meterVisible={meterVisible}
-                    meterColor={meterColor}
-                    meterOpacity={meterOpacity}
+                    audioState={audioState}
                     midiVisible={midiVisible}
                     Ui={Ui}
                     runtimeState={runtimeState[node.id]}

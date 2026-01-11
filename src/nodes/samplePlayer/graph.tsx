@@ -1,16 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { GraphNode } from "../../graph/types";
 import type {
   NodeDefinition,
   NodeUiProps,
 } from "../../types/graphNodeDefinition";
-import type { StoredSample } from "../../audio/sampleStore";
-import {
-  deleteSample,
-  listSamples,
-  putSampleFromFile,
-} from "../../audio/sampleStore";
-import { Knob, NumericInput, RadioGroup } from "../../ui/components";
+import { Button, Knob, NumericInput, RadioGroup } from "../../ui/components";
+import { SampleLibraryPanel } from "../../ui/components/SampleLibraryPanel";
 import { ThemeProvider } from "../../ui/context";
 import type { ControlTheme, OptionDef } from "../../ui/types";
 
@@ -51,9 +46,7 @@ const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({
   startBatch,
   endBatch,
 }) => {
-  const [library, setLibrary] = useState<ReadonlyArray<StoredSample>>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
 
   const debugError = (runtimeState as any)?.error as string | null | undefined;
 
@@ -61,20 +54,6 @@ const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({
     if (!node.state.sampleId) return "(none)";
     return node.state.sampleName ?? node.state.sampleId;
   }, [node.state.sampleId, node.state.sampleName]);
-
-  async function refreshLibrary() {
-    try {
-      setError(null);
-      setLibrary(await listSamples());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  useEffect(() => {
-    refreshLibrary();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <ThemeProvider theme={samplePlayerTheme}>
@@ -84,121 +63,62 @@ const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({
             style={{
               display: "flex",
               alignItems: "center",
-              justifyContent: "space-between",
+              gap: 8,
             }}
           >
-            <span style={{ fontSize: 12, opacity: 0.75 }}>Sample</span>
-            <button
-              type="button"
-              onClick={() => refreshLibrary()}
-              style={{ padding: "2px 8px" }}
-            >
-              Refresh
-            </button>
-          </div>
-
-          <select
-            value={node.state.sampleId ?? ""}
-            onChange={(e) => {
-              const id = e.target.value || null;
-              if (!id) {
-                onPatchNode(node.id, { sampleId: null, sampleName: null });
-                return;
-              }
-              const meta = library.find((s) => s.id === id);
-              onPatchNode(node.id, {
-                sampleId: id,
-                sampleName: meta?.name ?? node.state.sampleName ?? null,
-              });
-            }}
-          >
-            <option value="">(none)</option>
-            {library.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={{ fontSize: 12, opacity: 0.75 }}>
-              Import (stores in IndexedDB)
-            </span>
-            <input
-              type="file"
-              accept="audio/*"
-              disabled={busy}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setBusy(true);
-                try {
-                  setError(null);
-                  const meta = await putSampleFromFile(file);
-                  await refreshLibrary();
-                  onPatchNode(node.id, {
-                    sampleId: meta.id,
-                    sampleName: meta.name,
-                  });
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : String(err));
-                } finally {
-                  setBusy(false);
-                  (e.target as HTMLInputElement).value = "";
-                }
-              }}
-            />
-          </label>
-
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span
               style={{
                 fontSize: 12,
-                opacity: 0.75,
+                color: "rgba(231, 231, 231, 0.9)",
                 overflow: "hidden",
                 textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                flex: 1,
               }}
             >
               {currentLabel}
             </span>
-            <div style={{ flex: 1 }} />
-            <button
-              type="button"
-              disabled={!node.state.sampleId}
-              onClick={() =>
-                onPatchNode(node.id, { sampleId: null, sampleName: null })
-              }
+            <Button
+              onClick={() => setLibraryOpen(true)}
+              style={{ padding: 0, flexShrink: 0 }}
+              title="Open Sample Library"
             >
-              Clear
-            </button>
-            <button
-              type="button"
-              disabled={!node.state.sampleId || busy}
-              onClick={async () => {
-                const id = node.state.sampleId;
-                if (!id) return;
-                const label = node.state.sampleName ?? id;
-                if (!confirm(`Delete stored sample "${label}" from IndexedDB?`))
-                  return;
-                setBusy(true);
-                try {
-                  await deleteSample(id);
-                  await refreshLibrary();
-                  onPatchNode(node.id, { sampleId: null, sampleName: null });
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : String(err));
-                } finally {
-                  setBusy(false);
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+              </svg>
+            </Button>
+            {node.state.sampleId && (
+              <Button
+                onClick={() =>
+                  onPatchNode(node.id, { sampleId: null, sampleName: null })
                 }
-              }}
-            >
-              Delete
-            </button>
+                style={{ padding: 0, flexShrink: 0 }}
+                title="Clear Sample"
+              >
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                >
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </Button>
+            )}
           </div>
 
-          {(error || debugError) && (
+          {debugError && (
             <div style={{ fontSize: 12, color: "rgba(191, 97, 106, 0.95)" }}>
-              {debugError ?? error}
+              {debugError}
             </div>
           )}
         </div>
@@ -253,6 +173,15 @@ const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({
           />
         </div>
       </div>
+
+      <SampleLibraryPanel
+        open={libraryOpen}
+        onClose={() => setLibraryOpen(false)}
+        selectedId={node.state.sampleId}
+        onSelect={(id, name) => {
+          onPatchNode(node.id, { sampleId: id, sampleName: name });
+        }}
+      />
     </ThemeProvider>
   );
 };

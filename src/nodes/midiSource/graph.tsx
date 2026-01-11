@@ -4,7 +4,7 @@ import type {
   NodeDefinition,
   NodeUiProps,
 } from "../../types/graphNodeDefinition";
-import { NumericInput } from "../../ui/components/NumericInput";
+import { Button, NumericInput } from "../../ui/components";
 import { ThemeProvider } from "../../ui/context";
 import type { ControlTheme } from "../../ui/types/theme";
 
@@ -47,13 +47,8 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
             justifyContent: "center",
           }}
         >
-          <button
-            type="button"
+          <Button
             aria-pressed={isHeld}
-            style={{
-              background: isHeld ? "rgba(168, 85, 247, 0.18)" : undefined,
-              borderColor: isHeld ? "rgba(168, 85, 247, 0.55)" : undefined,
-            }}
             onPointerDown={async (e) => {
               e.stopPropagation();
               if (activePointerIdRef.current != null) return;
@@ -114,7 +109,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
             }}
           >
             Trigger
-          </button>
+          </Button>
         </div>
         <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
           <NumericInput

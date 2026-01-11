@@ -10,6 +10,7 @@ import { portKindColor } from "../nodeRegistry";
 import { PORT_ROW_HEIGHT } from "../layout";
 import { localPointFromPointerEvent, viewToWorld } from "../coordinates";
 import styles from "../GraphEditor.module.css";
+import { NodeMeter } from "./NodeMeter";
 
 export type GraphNodeCardProps = {
   node: GraphNode;
@@ -17,9 +18,7 @@ export type GraphNodeCardProps = {
   ports: readonly PortSpec[];
   isSelected: boolean;
   zIndex: number;
-  meterVisible: boolean;
-  meterColor: string;
-  meterOpacity: number;
+  audioState: AudioContextState | "off";
   midiVisible: boolean;
   Ui: React.ComponentType<{
     node: GraphNode;
@@ -49,9 +48,7 @@ export function GraphNodeCard({
   ports,
   isSelected,
   zIndex,
-  meterVisible,
-  meterColor,
-  meterOpacity,
+  audioState,
   midiVisible,
   Ui,
   runtimeState,
@@ -66,6 +63,11 @@ export function GraphNodeCard({
   startBatch,
   endBatch,
 }: GraphNodeCardProps) {
+  // Determine meter color based on node type
+  const meterColor =
+    node.type === "audioOut"
+      ? "rgba(236, 239, 244, 1)"
+      : portKindColor("audio");
   const handleHeaderPointerDown = (e: React.PointerEvent) => {
     if (!rootRef.current || !scrollRef.current) return;
     e.stopPropagation();
@@ -126,14 +128,11 @@ export function GraphNodeCard({
             }`}
             style={{ background: portKindColor("midi") }}
           />
-          <div
-            className={`${styles.indicatorDot} ${
-              meterVisible ? styles.indicatorDotVisible : ""
-            }`}
-            style={{
-              background: meterColor,
-              opacity: meterVisible ? meterOpacity : 0,
-            }}
+          <NodeMeter
+            nodeId={node.id}
+            nodeType={node.type}
+            audioState={audioState}
+            color={meterColor}
           />
         </div>
       </div>
