@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import type { ContinuousControlProps, BaseControlProps } from "../types";
 import { useTheme } from "../context";
 import { useDragValue } from "../hooks";
-import { Label } from "./Label";
+import { Label, type LabelPosition } from "./Label";
 
 export interface NumericInputProps extends ContinuousControlProps, BaseControlProps {
   format?: (value: number) => string;
@@ -17,6 +17,8 @@ export interface NumericInputProps extends ContinuousControlProps, BaseControlPr
   onDragStart?: () => void;
   /** Called when drag ends */
   onDragEnd?: () => void;
+  /** Position of the label relative to the input */
+  labelPosition?: LabelPosition;
 }
 
 /**
@@ -39,6 +41,7 @@ export function NumericInput({
   autoFocus = false,
   onDragStart,
   onDragEnd,
+  labelPosition = "bottom",
 }: NumericInputProps) {
   const { theme, chrome } = useTheme();
   const [editingValue, setEditingValue] = useState<string | null>(null);
@@ -137,42 +140,49 @@ export function NumericInput({
     startEditing();
   };
 
+  const isHorizontal = labelPosition === "left" || labelPosition === "right";
+
+  const inputElement = (
+    <input
+      ref={inputRef}
+      type="text"
+      value={displayValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      onPointerDown={handlePointerDown}
+      onDoubleClick={handleDoubleClick}
+      disabled={disabled}
+      readOnly={!isEditing}
+      style={{
+        width,
+        padding: "4px 6px",
+        fontSize: 12,
+        fontFamily: "monospace",
+        textAlign: "center",
+        color: chrome.text,
+        background: chrome.surface,
+        border: `1px solid ${isDragging || isEditing ? theme.primary : chrome.border}`,
+        borderRadius: 4,
+        outline: "none",
+        cursor: disabled ? "not-allowed" : isEditing ? "text" : "ns-resize",
+        userSelect: isEditing ? "text" : "none",
+      }}
+    />
+  );
+
   return (
     <div
       style={{
         display: "flex",
-        flexDirection: "column",
+        flexDirection: isHorizontal ? "row" : "column",
         alignItems: "center",
         opacity: disabled ? 0.4 : 1,
       }}
     >
-      <input
-        ref={inputRef}
-        type="text"
-        value={displayValue}
-        onChange={handleChange}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        onPointerDown={handlePointerDown}
-        onDoubleClick={handleDoubleClick}
-        disabled={disabled}
-        readOnly={!isEditing}
-        style={{
-          width,
-          padding: "4px 6px",
-          fontSize: 12,
-          fontFamily: "monospace",
-          textAlign: "center",
-          color: chrome.text,
-          background: chrome.surface,
-          border: `1px solid ${isDragging || isEditing ? theme.primary : chrome.border}`,
-          borderRadius: 4,
-          outline: "none",
-          cursor: disabled ? "not-allowed" : isEditing ? "text" : "ns-resize",
-          userSelect: isEditing ? "text" : "none",
-        }}
-      />
-      {label && <Label text={label} />}
+      {label && labelPosition === "left" && <Label text={label} position={labelPosition} />}
+      {inputElement}
+      {label && labelPosition !== "left" && <Label text={label} position={labelPosition} />}
     </div>
   );
 }

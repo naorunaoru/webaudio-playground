@@ -39,7 +39,7 @@ const MidiContext = createContext<MidiContextValue | null>(null);
 
 type MidiProviderProps = {
   graph: GraphState;
-  onEnsureAudioRunning?: (graph: GraphState) => Promise<void>;
+  onEnsureAudioRunning?: () => Promise<void>;
   onPatchNodesEphemeral?: (patches: Map<NodeId, Record<string, unknown>>) => void;
   children: ReactNode;
 };
@@ -72,7 +72,7 @@ export function MidiProvider({
         while (queue.length > 0) {
           const item = queue.shift()!;
           try {
-            await onEnsureAudioRunningRef.current?.(item.graph);
+            await onEnsureAudioRunningRef.current?.();
             getAudioEngine().dispatchMidi(
               item.graph,
               item.nodeId,
@@ -119,7 +119,7 @@ export function MidiProvider({
   const sendMidiToNode = useCallback(
     async (nodeId: NodeId, event: MidiEvent): Promise<void> => {
       const currentGraph = graphRef.current;
-      await onEnsureAudioRunningRef.current?.(currentGraph);
+      await onEnsureAudioRunningRef.current?.();
       getAudioEngine().dispatchMidiDirect(currentGraph, nodeId, event);
     },
     []

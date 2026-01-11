@@ -1,3 +1,5 @@
+import type { AudioGraphContext } from "../../audio/context";
+import { midiToFreqHz } from "../../audio/context";
 import type { GraphNode, MidiEvent, NodeId } from "../../graph/types";
 import type {
   AudioNodeFactory,
@@ -6,12 +8,6 @@ import type {
 import type { AudioNodeServices } from "../../types/nodeModule";
 
 type OscillatorGraphNode = Extract<GraphNode, { type: "oscillator" }>;
-
-const A4_HZ = 440;
-
-function midiToFreqHz(note: number, a4Hz: number): number {
-  return a4Hz * Math.pow(2, (note - 69) / 12);
-}
 
 function rmsFromAnalyser(
   analyser: AnalyserNode,
@@ -28,7 +24,8 @@ function rmsFromAnalyser(
 
 function createOscillatorRuntime(
   ctx: AudioContext,
-  _nodeId: NodeId
+  _nodeId: NodeId,
+  graphContext: AudioGraphContext
 ): AudioNodeInstance<OscillatorGraphNode> {
   const output = ctx.createGain();
   output.gain.value = 1;
@@ -66,7 +63,22 @@ function createOscillatorRuntime(
 
   // Current state for recreating sources
   let currentWaveform: OscillatorType = "sine";
-  let currentFrequency = A4_HZ;
+  let currentA4 = graphContext.getValues().a4Hz;
+  let currentFrequency = currentA4;
+
+  // Subscribe to A4 changes
+  const unsubscribeA4 = graphContext.subscribe("a4Hz", (a4Hz) => {
+    const prevA4 = currentA4;
+    currentA4 = a4Hz;
+
+    // Retune currently playing notes if A4 changed
+    if (osc && activeNotes.size > 0 && prevA4 !== a4Hz) {
+      const lastNote = Array.from(activeNotes).pop()!;
+      const hz = midiToFreqHz(lastNote, currentA4);
+      currentFrequency = hz;
+      osc.frequency.setTargetAtTime(hz, ctx.currentTime, 0.01);
+    }
+  });
 
   const startSources = () => {
     if (osc || noiseSource) return; // Already running
@@ -133,7 +145,7 @@ function createOscillatorRuntime(
       const now = ctx.currentTime;
 
       if (event.type === "noteOn") {
-        const hz = midiToFreqHz(event.note, A4_HZ);
+        const hz = midiToFreqHz(event.note, currentA4);
         currentFrequency = hz;
         if (osc) {
           osc.frequency.setValueAtTime(hz, now);
@@ -148,6 +160,7 @@ function createOscillatorRuntime(
     },
     getRuntimeState: () => runtimeState,
     onRemove: () => {
+      unsubscribeA4();
       stopSources();
       meter.disconnect();
       output.disconnect();
@@ -168,10 +181,11 @@ function createOscillatorRuntime(
 }
 
 export function oscillatorAudioFactory(
-  _services: AudioNodeServices
+  services: AudioNodeServices
 ): AudioNodeFactory<OscillatorGraphNode> {
   return {
     type: "oscillator",
-    create: (ctx, nodeId) => createOscillatorRuntime(ctx, nodeId),
+    create: (ctx, nodeId) =>
+      createOscillatorRuntime(ctx, nodeId, services.graphContext),
   };
 }

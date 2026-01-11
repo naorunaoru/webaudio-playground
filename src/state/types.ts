@@ -50,6 +50,12 @@ export type DocUiState = {
     x: number;
     y: number;
   };
+  /** Audio graph context values (tempo, A4, time signature) */
+  context?: {
+    tempo?: number;
+    a4Hz?: number;
+    timeSignature?: [number, number];
+  };
 };
 
 /**

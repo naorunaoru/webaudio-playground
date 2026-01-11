@@ -19,6 +19,7 @@ import {
   createDocumentFromImport,
   waitForStorageReady,
 } from "./repo";
+import { getAudioEngine } from "../audio/engine";
 
 type HistoryEntry = {
   binary: Uint8Array;
@@ -64,6 +65,11 @@ type GraphDocContextValue = {
   /** Loading state */
   isLoading: boolean;
 
+  /** Audio state */
+  audioState: AudioContextState | "off";
+  onAudioToggle: () => void;
+  ensureAudioRunning: () => Promise<void>;
+
   /** Mutation functions */
   moveNode: (nodeId: NodeId, x: number, y: number) => void;
   addNode: (node: GraphNode) => void;
@@ -97,6 +103,7 @@ type GraphDocContextValue = {
   /** UI state (persisted but no undo) */
   uiState: DocUiState;
   setKeyboardState: (state: { visible: boolean; x: number; y: number }) => void;
+  setContextState: (state: { tempo?: number; a4Hz?: number; timeSignature?: [number, number] }) => void;
 };
 
 const GraphDocContext = createContext<GraphDocContextValue | null>(null);
@@ -105,6 +112,11 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
   const [handle, setHandle] = useState<DocHandle<GraphDoc> | null>(null);
   const [graphState, setGraphState] = useState<GraphState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [audioState, setAudioState] = useState<AudioContextState | "off">("off");
+
+  // Refs for audio toggle callback (avoid stale closure)
+  const graphStateRef = useRef<GraphState | null>(null);
+  graphStateRef.current = graphState;
 
   // Undo/redo stacks
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
@@ -542,11 +554,56 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     [handle]
   );
 
+  const setContextState = useCallback(
+    (state: { tempo?: number; a4Hz?: number; timeSignature?: [number, number] }) => {
+      if (!handle) return;
+
+      handle.change((doc) => {
+        if (!doc.meta.ui) {
+          doc.meta.ui = {};
+        }
+        doc.meta.ui.context = {
+          ...doc.meta.ui.context,
+          ...state,
+        };
+      });
+    },
+    [handle]
+  );
+
   const uiState: DocUiState = handle?.doc()?.meta.ui ?? {};
+
+  // Audio toggle handler
+  const onAudioToggle = useCallback(async () => {
+    const engine = getAudioEngine();
+    const next = await engine.toggleRunning();
+    if (next === "running" && graphStateRef.current) {
+      engine.syncGraph(graphStateRef.current);
+    }
+    setAudioState(next);
+  }, []);
+
+  // Ensure audio is running (for auto-start on interaction/MIDI)
+  const ensureAudioRunning = useCallback(async () => {
+    const engine = getAudioEngine();
+    await engine.ensureRunning();
+    if (graphStateRef.current) {
+      engine.syncGraph(graphStateRef.current);
+    }
+    setAudioState(engine.getStatus()?.state ?? "off");
+  }, []);
+
+  // Initialize audio state on mount
+  useEffect(() => {
+    setAudioState(getAudioEngine().getStatus()?.state ?? "off");
+  }, []);
 
   const value: GraphDocContextValue = {
     graphState,
     isLoading,
+    audioState,
+    onAudioToggle,
+    ensureAudioRunning,
     moveNode,
     addNode,
     deleteNode,
@@ -569,6 +626,7 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     importDocument,
     uiState,
     setKeyboardState,
+    setContextState,
   };
 
   return (
