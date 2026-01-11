@@ -1,7 +1,13 @@
-import type { GraphNode, GraphState, MidiEvent, NodeId } from "../graph/types";
-import { createBuiltInAudioNodeFactories, listBuiltInAudioWorkletModules } from "./nodeRegistry";
+import type { GraphConnection, GraphNode, GraphState, MidiEvent, NodeId } from "../graph/types";
+import {
+  createBuiltInAudioNodeFactories,
+  listBuiltInAudioWorkletModules,
+} from "./nodeRegistry";
 import type { AudioNodeFactoryMap } from "./nodeRegistry";
-import type { AudioNodeFactory, AudioNodeInstance } from "../types/audioRuntime";
+import type {
+  AudioNodeFactory,
+  AudioNodeInstance,
+} from "../types/audioRuntime";
 
 export type EngineStatus = {
   state: AudioContextState;
@@ -15,6 +21,10 @@ export type MidiDispatchEvent = {
 
 export type MidiDispatchListener = (evt: MidiDispatchEvent) => void;
 
+function connectionKey(conn: GraphConnection): string {
+  return `${conn.from.nodeId}:${conn.from.portId}->${conn.to.nodeId}:${conn.to.portId}`;
+}
+
 export class AudioEngine {
   private audioContext: AudioContext | null = null;
   private masterGain: GainNode | null = null;
@@ -26,6 +36,8 @@ export class AudioEngine {
   private factoryOverrides: AudioNodeFactoryMap = {};
   private loadedWorkletModules = new Set<string>();
   private midiListeners = new Set<MidiDispatchListener>();
+  /** Tracks active audio/automation connections for incremental sync */
+  private activeConnections = new Map<string, GraphConnection>();
 
   onMidiDispatch(listener: MidiDispatchListener): () => void {
     this.midiListeners.add(listener);
@@ -45,7 +57,10 @@ export class AudioEngine {
 
   getStatus(): EngineStatus | null {
     if (!this.audioContext) return null;
-    return { state: this.audioContext.state, sampleRate: this.audioContext.sampleRate };
+    return {
+      state: this.audioContext.state,
+      sampleRate: this.audioContext.sampleRate,
+    };
   }
 
   getLevels(): Record<NodeId, number> {
@@ -103,7 +118,9 @@ export class AudioEngine {
       this.masterMeter = this.audioContext.createAnalyser();
       this.masterMeter.fftSize = 256;
       this.masterMeter.smoothingTimeConstant = 0.5;
-      this.masterMeterBuffer = new Float32Array(this.masterMeter.fftSize) as Float32Array<ArrayBufferLike>;
+      this.masterMeterBuffer = new Float32Array(
+        this.masterMeter.fftSize
+      ) as Float32Array<ArrayBufferLike>;
       this.masterGain.connect(this.masterMeter);
       this.masterMeter.connect(this.audioContext.destination);
       this.factories = {
@@ -133,10 +150,31 @@ export class AudioEngine {
 
   registerAudioNodeFactory<TType extends GraphNode["type"]>(
     type: TType,
-    factory: AudioNodeFactory<any>,
+    factory: AudioNodeFactory<any>
   ) {
     this.factoryOverrides[type] = factory;
     if (this.factories) this.factories[type] = factory;
+  }
+
+  /**
+   * Disconnect a specific audio/automation connection without affecting others.
+   */
+  private disconnectConnection(conn: GraphConnection): void {
+    if (conn.kind !== "audio" && conn.kind !== "automation") return;
+
+    const from = this.audioNodes.get(conn.from.nodeId);
+    const to = this.audioNodes.get(conn.to.nodeId);
+    if (!from || !to) return;
+
+    const output = from.getAudioOutput?.(conn.from.portId);
+    const input = to.getAudioInput?.(conn.to.portId);
+    if (output && input) {
+      try {
+        output.disconnect(input as AudioNode);
+      } catch {
+        // Connection may not exist, ignore
+      }
+    }
   }
 
   syncGraph(graph: GraphState): void {
@@ -152,7 +190,9 @@ export class AudioEngine {
       }
     }
 
-    this.outputNodeIds = new Set(graph.nodes.filter((n) => n.type === "audioOut").map((n) => n.id));
+    this.outputNodeIds = new Set(
+      graph.nodes.filter((n) => n.type === "audioOut").map((n) => n.id)
+    );
 
     for (const node of graph.nodes) {
       const factory = factories[node.type];
@@ -165,25 +205,33 @@ export class AudioEngine {
       this.audioNodes.get(node.id)?.updateState(node.state as any);
     }
 
-    const disconnected = new Set<string>();
+    // Build set of desired audio/automation connections
+    const desiredConnections = new Map<string, GraphConnection>();
     for (const conn of graph.connections) {
       if (conn.kind !== "audio" && conn.kind !== "automation") continue;
-      const from = this.audioNodes.get(conn.from.nodeId);
-      if (!from?.getAudioOutput) continue;
-      const key = `${conn.from.nodeId}:${conn.from.portId}`;
-      if (disconnected.has(key)) continue;
-      disconnected.add(key);
-      from.getAudioOutput(conn.from.portId)?.disconnect();
+      desiredConnections.set(connectionKey(conn), conn);
     }
 
-    for (const conn of graph.connections) {
-      if (conn.kind !== "audio" && conn.kind !== "automation") continue;
+    // Disconnect removed connections
+    for (const [key, conn] of this.activeConnections) {
+      if (!desiredConnections.has(key)) {
+        this.disconnectConnection(conn);
+        this.activeConnections.delete(key);
+      }
+    }
+
+    // Connect new connections
+    for (const [key, conn] of desiredConnections) {
+      if (this.activeConnections.has(key)) continue;
       const from = this.audioNodes.get(conn.from.nodeId);
       const to = this.audioNodes.get(conn.to.nodeId);
       if (!from || !to) continue;
       const out = from.getAudioOutput?.(conn.from.portId);
       const input = to.getAudioInput?.(conn.to.portId);
-      if (out && input) out.connect(input as any);
+      if (out && input) {
+        out.connect(input as AudioNode);
+        this.activeConnections.set(key, conn);
+      }
     }
   }
 
@@ -191,7 +239,7 @@ export class AudioEngine {
     graph: GraphState,
     sourceNodeId: NodeId,
     event: MidiEvent,
-    stateOverrides?: ReadonlyMap<NodeId, Record<string, unknown>>,
+    stateOverrides?: ReadonlyMap<NodeId, Record<string, unknown>>
   ): void {
     const ctx = this.audioContext;
     if (!ctx) return;
@@ -201,9 +249,10 @@ export class AudioEngine {
 
     const edgeKind = event.type === "cc" ? "cc" : "midi";
     const starts = graph.connections.filter(
-      (c) => c.kind === edgeKind && c.from.nodeId === sourceNodeId,
+      (c) => c.kind === edgeKind && c.from.nodeId === sourceNodeId
     );
-    for (const conn of starts) queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
+    for (const conn of starts)
+      queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
 
     while (queue.length > 0) {
       const current = queue.shift()!;
@@ -224,9 +273,10 @@ export class AudioEngine {
       }
 
       const outgoing = graph.connections.filter(
-        (c) => c.kind === edgeKind && c.from.nodeId === current.nodeId,
+        (c) => c.kind === edgeKind && c.from.nodeId === current.nodeId
       );
-      for (const conn of outgoing) queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
+      for (const conn of outgoing)
+        queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
     }
   }
 
@@ -237,7 +287,7 @@ export class AudioEngine {
   dispatchMidiDirect(
     graph: GraphState,
     targetNodeId: NodeId,
-    event: MidiEvent,
+    event: MidiEvent
   ): void {
     const ctx = this.audioContext;
     if (!ctx) return;
@@ -255,6 +305,12 @@ export class AudioEngine {
     if (!n) return;
     n.onRemove?.();
     this.audioNodes.delete(nodeId);
+    // Clean up connection tracking for this node
+    for (const [key, conn] of this.activeConnections) {
+      if (conn.from.nodeId === nodeId || conn.to.nodeId === nodeId) {
+        this.activeConnections.delete(key);
+      }
+    }
   }
 
   private async ensureBuiltInWorkletsLoaded(ctx: AudioContext): Promise<void> {
@@ -271,7 +327,7 @@ export class AudioEngine {
 
 function rmsFromAnalyser(
   analyser: AnalyserNode,
-  buffer: Float32Array<ArrayBufferLike>,
+  buffer: Float32Array<ArrayBufferLike>
 ): number {
   analyser.getFloatTimeDomainData(buffer as any);
   let sum = 0;
