@@ -1,15 +1,16 @@
 import type { GraphNode } from "../graph/types";
 import { NODE_MODULES } from "../nodes";
 import type { AudioNodeFactory } from "../types/audioRuntime";
+import type { AudioNodeServices } from "../types/nodeModule";
 
 export type AudioNodeFactoryMap = Partial<Record<GraphNode["type"], AudioNodeFactory<any>>>;
 
-export function createBuiltInAudioNodeFactories(masterInput: AudioNode): AudioNodeFactoryMap {
+export function createBuiltInAudioNodeFactories(services: AudioNodeServices): AudioNodeFactoryMap {
   const out: AudioNodeFactoryMap = {};
   for (const type of Object.keys(NODE_MODULES) as Array<GraphNode["type"]>) {
     const mod = NODE_MODULES[type];
     if (!mod.audioFactory) continue;
-    out[type] = mod.audioFactory({ masterInput });
+    out[type] = mod.audioFactory(services);
   }
   return out;
 }

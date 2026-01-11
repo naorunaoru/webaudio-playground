@@ -2,7 +2,7 @@ import styles from "./App.module.css";
 import { GraphEditor, type GraphEditorHandle } from "./graph/GraphEditor";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getAudioEngine } from "./audio/engine";
-import type { GraphState, GraphNode } from "./graph/types";
+import type { GraphNode } from "./graph/types";
 import {
   exportProject,
   downloadBlob,
@@ -20,6 +20,7 @@ import {
 } from "./ui/components/Menu";
 import { FloatingPanel } from "./ui/components/FloatingPanel";
 import { PianoKeyboard } from "./ui/components/PianoKeyboard";
+import { ContextToolbar } from "./ui/components/ContextToolbar";
 import { NODE_MODULES } from "./nodes";
 
 function readAudioDspLoad(
@@ -85,13 +86,12 @@ function AppContent() {
     redoDescription,
     uiState,
     setKeyboardState,
+    audioState,
+    ensureAudioRunning,
   } = useGraphDoc();
 
   const graphEditorRef = useRef<GraphEditorHandle | null>(null);
   const didAutoStartRef = useRef(false);
-  const [audioState, setAudioState] = useState<AudioContextState | "off">(
-    "off"
-  );
 
   // Keyboard state from persisted UI state
   const keyboardState = uiState.keyboard;
@@ -125,16 +125,13 @@ function AppContent() {
     setKeyboardVisible(false);
   }, [setKeyboardVisible]);
 
-  const ensureAudioRunning = useCallback(async (graph: GraphState | null) => {
-    const engine = getAudioEngine();
-    await engine.ensureRunning();
-    if (graph) engine.syncGraph(graph);
-    setAudioState(engine.getStatus()?.state ?? "off");
-  }, []);
-
+  // Sync persisted context values to audio engine when they change
   useEffect(() => {
-    setAudioState(getAudioEngine().getStatus()?.state ?? "off");
-  }, []);
+    const context = uiState.context;
+    if (context) {
+      getAudioEngine().updateContextValues(context);
+    }
+  }, [uiState.context]);
 
   useEffect(() => {
     const onFirstInteraction = (evt: Event) => {
@@ -144,7 +141,7 @@ function AppContent() {
       }
       if (didAutoStartRef.current) return;
       didAutoStartRef.current = true;
-      void ensureAudioRunning(graphState);
+      void ensureAudioRunning();
     };
 
     const pointerOptions: AddEventListenerOptions = {
@@ -265,22 +262,7 @@ function AppContent() {
                 ))}
               </MenuBarItem>
 
-              <MenuBarItem label="Audio" index={3}>
-                <MenuItem
-                  data-audio-toggle
-                  onClick={async () => {
-                    const engine = getAudioEngine();
-                    const next = await engine.toggleRunning();
-                    if (next === "running" && graphState)
-                      engine.syncGraph(graphState);
-                    setAudioState(next);
-                  }}
-                >
-                  {audioState === "running" ? "Stop Audio" : "Start Audio"}
-                </MenuItem>
-              </MenuBarItem>
-
-              <MenuBarItem label="View" index={4}>
+              <MenuBarItem label="View" index={3}>
                 <MenuItemCheckbox
                   checked={showKeyboard}
                   onChange={setKeyboardVisible}
@@ -289,6 +271,8 @@ function AppContent() {
                 </MenuItemCheckbox>
               </MenuBarItem>
             </MenuBar>
+
+            <ContextToolbar />
 
             <DspLoadDisplay audioState={audioState} />
           </div>

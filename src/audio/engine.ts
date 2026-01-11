@@ -1,4 +1,10 @@
-import type { GraphConnection, GraphNode, GraphState, MidiEvent, NodeId } from "../graph/types";
+import type {
+  GraphConnection,
+  GraphNode,
+  GraphState,
+  MidiEvent,
+  NodeId,
+} from "../graph/types";
 import {
   createBuiltInAudioNodeFactories,
   listBuiltInAudioWorkletModules,
@@ -8,6 +14,13 @@ import type {
   AudioNodeFactory,
   AudioNodeInstance,
 } from "../types/audioRuntime";
+import {
+  AudioGraphContextImpl,
+  DEFAULT_CONTEXT_VALUES,
+  type AudioGraphContext,
+  type AudioGraphEvent,
+  type PersistedContextValues,
+} from "./context";
 
 export type EngineStatus = {
   state: AudioContextState;
@@ -39,7 +52,55 @@ export class AudioEngine {
   /** Tracks active audio/automation connections for incremental sync */
   private activeConnections = new Map<string, GraphConnection>();
   /** Tracks which ports are connected for each node */
-  private connectedPorts = new Map<NodeId, { inputs: Set<string>; outputs: Set<string> }>();
+  private connectedPorts = new Map<
+    NodeId,
+    { inputs: Set<string>; outputs: Set<string> }
+  >();
+  /** Root context for global values (tempo, A4, etc.) */
+  private rootContext: AudioGraphContextImpl;
+
+  constructor() {
+    // Initialize with defaults; sampleRate will be set when AudioContext is created
+    this.rootContext = new AudioGraphContextImpl(DEFAULT_CONTEXT_VALUES);
+  }
+
+  /** Get the root audio graph context */
+  getGraphContext(): AudioGraphContext {
+    return this.rootContext;
+  }
+
+  /** Update context values (e.g., from persisted document) */
+  updateContextValues(values: Partial<PersistedContextValues>): void {
+    if (values.a4Hz !== undefined) {
+      this.rootContext.setValue("a4Hz", values.a4Hz);
+    }
+    if (values.tempo !== undefined) {
+      this.rootContext.setValue("tempo", values.tempo);
+    }
+    if (values.timeSignature !== undefined) {
+      this.rootContext.setValue("timeSignature", values.timeSignature);
+    }
+  }
+
+  /** Set tempo (convenience method, also emits event) */
+  setTempo(bpm: number): void {
+    this.rootContext.emit({ type: "tempoChange", tempo: bpm });
+  }
+
+  /** Set A4 reference frequency (convenience method, also emits event) */
+  setA4(hz: number): void {
+    this.rootContext.emit({ type: "a4Change", a4Hz: hz });
+  }
+
+  /** Set time signature (convenience method, also emits event) */
+  setTimeSignature(timeSignature: readonly [number, number]): void {
+    this.rootContext.emit({ type: "timeSignatureChange", timeSignature });
+  }
+
+  /** Emit a context event */
+  emitContextEvent(event: AudioGraphEvent): void {
+    this.rootContext.emit(event);
+  }
 
   onMidiDispatch(listener: MidiDispatchListener): () => void {
     this.midiListeners.add(listener);
@@ -125,8 +186,15 @@ export class AudioEngine {
       ) as Float32Array<ArrayBufferLike>;
       this.masterGain.connect(this.masterMeter);
       this.masterMeter.connect(this.audioContext.destination);
+
+      // Update context with actual sample rate
+      this.rootContext.setValue("sampleRate", this.audioContext.sampleRate);
+
       this.factories = {
-        ...createBuiltInAudioNodeFactories(this.masterGain),
+        ...createBuiltInAudioNodeFactories({
+          masterInput: this.masterGain,
+          graphContext: this.rootContext,
+        }),
         ...this.factoryOverrides,
       };
     }
@@ -237,7 +305,10 @@ export class AudioEngine {
     }
 
     // Build current port connections per node and notify if changed
-    const newConnectedPorts = new Map<NodeId, { inputs: Set<string>; outputs: Set<string> }>();
+    const newConnectedPorts = new Map<
+      NodeId,
+      { inputs: Set<string>; outputs: Set<string> }
+    >();
     const getOrCreate = (nodeId: NodeId) => {
       let entry = newConnectedPorts.get(nodeId);
       if (!entry) {
@@ -268,9 +339,15 @@ export class AudioEngine {
       const newInputs = newEntry?.inputs ?? emptySet;
       const newOutputs = newEntry?.outputs ?? emptySet;
 
-      if (!setsEqual(oldInputs, newInputs) || !setsEqual(oldOutputs, newOutputs)) {
+      if (
+        !setsEqual(oldInputs, newInputs) ||
+        !setsEqual(oldOutputs, newOutputs)
+      ) {
         const instance = this.audioNodes.get(nodeId);
-        instance?.onConnectionsChanged?.({ inputs: newInputs, outputs: newOutputs });
+        instance?.onConnectionsChanged?.({
+          inputs: newInputs,
+          outputs: newOutputs,
+        });
       }
     }
     this.connectedPorts = newConnectedPorts;

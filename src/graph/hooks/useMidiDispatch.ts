@@ -14,7 +14,7 @@ type MidiQueueItem = {
 
 type UseMidiDispatchOptions = {
   graph: GraphState;
-  onEnsureAudioRunning?: (graph: GraphState) => Promise<void>;
+  onEnsureAudioRunning?: () => Promise<void>;
   onPatchNodesEphemeral?: (patches: Map<NodeId, Record<string, unknown>>) => void;
 };
 
@@ -45,7 +45,7 @@ export function useMidiDispatch({
         while (queue.length > 0) {
           const item = queue.shift()!;
           try {
-            await onEnsureAudioRunningRef.current?.(item.graph);
+            await onEnsureAudioRunningRef.current?.();
             getAudioEngine().dispatchMidi(
               item.graph,
               item.nodeId,

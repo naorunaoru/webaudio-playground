@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import type { ContinuousControlProps, BaseControlProps } from "../types";
 import { useTheme } from "../context";
 import { useDragValue } from "../hooks";
-import { Label } from "./Label";
+import { Label, type LabelPosition } from "./Label";
 import { Tooltip } from "./Tooltip";
 import { NumericInput } from "./NumericInput";
 
@@ -17,6 +17,8 @@ export interface KnobProps extends ContinuousControlProps, BaseControlProps {
   onDragEnd?: () => void;
   /** When provided, the arc displays this value instead of the base value (for showing modulation) */
   modulationValue?: number;
+  /** Position of the label relative to the knob */
+  labelPosition?: LabelPosition;
 }
 
 /**
@@ -41,6 +43,7 @@ export function Knob({
   onDragStart,
   onDragEnd,
   modulationValue,
+  labelPosition = "bottom",
 }: KnobProps) {
   const { theme, chrome } = useTheme();
   const [isEditing, setIsEditing] = useState(false);
@@ -167,6 +170,8 @@ export function Knob({
     }
   };
 
+  const isHorizontal = labelPosition === "left" || labelPosition === "right";
+
   // When editing, show NumericInput instead of knob
   if (isEditing) {
     return (
@@ -174,10 +179,11 @@ export function Knob({
         ref={containerRef}
         style={{
           display: "flex",
-          flexDirection: "column",
+          flexDirection: isHorizontal ? "row" : "column",
           alignItems: "center",
         }}
       >
+        {label && labelPosition === "left" && <Label text={label} position={labelPosition} />}
         <div style={{ width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <NumericInput
             value={value}
@@ -191,10 +197,52 @@ export function Knob({
             onBlur={handleEditBlur}
           />
         </div>
-        {label && <Label text={label} />}
+        {label && labelPosition !== "left" && <Label text={label} position={labelPosition} />}
       </div>
     );
   }
+
+  const knobSvg = (
+    <svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      style={{ overflow: "visible" }}
+    >
+      {/* Track background */}
+      <path
+        d={arcPath(startAngle, endAngle)}
+        fill="none"
+        stroke={chrome.track}
+        strokeWidth={trackWidth}
+        strokeLinecap="round"
+      />
+
+      {/* Active arc */}
+      {renderIndicatorArc()}
+
+      {/* Knob body */}
+      <circle
+        cx={cx}
+        cy={cy}
+        r={radius - 4}
+        fill={chrome.surface}
+        stroke={chrome.border}
+        strokeWidth={1}
+      />
+
+      {/* Pointer/notch */}
+      <line
+        x1={pointerX}
+        y1={pointerY}
+        x2={pointerEndX}
+        y2={pointerEndY}
+        stroke={theme.primary}
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </svg>
+  );
 
   return (
     <Tooltip content={displayValue} forceVisible={isDragging}>
@@ -202,7 +250,7 @@ export function Knob({
         ref={containerRef}
         style={{
           display: "flex",
-          flexDirection: "column",
+          flexDirection: isHorizontal ? "row" : "column",
           alignItems: "center",
           opacity: disabled ? 0.4 : 1,
           cursor: disabled ? "not-allowed" : "ns-resize",
@@ -211,47 +259,9 @@ export function Knob({
         onPointerDown={handlePointerDown}
         onDoubleClick={handleDoubleClick}
       >
-        <svg
-        width={size}
-        height={size}
-        viewBox={`0 0 ${size} ${size}`}
-        style={{ overflow: "visible" }}
-      >
-        {/* Track background */}
-        <path
-          d={arcPath(startAngle, endAngle)}
-          fill="none"
-          stroke={chrome.track}
-          strokeWidth={trackWidth}
-          strokeLinecap="round"
-        />
-
-        {/* Active arc */}
-        {renderIndicatorArc()}
-
-        {/* Knob body */}
-        <circle
-          cx={cx}
-          cy={cy}
-          r={radius - 4}
-          fill={chrome.surface}
-          stroke={chrome.border}
-          strokeWidth={1}
-        />
-
-        {/* Pointer/notch */}
-        <line
-          x1={pointerX}
-          y1={pointerY}
-          x2={pointerEndX}
-          y2={pointerEndY}
-          stroke={theme.primary}
-          strokeWidth={2}
-          strokeLinecap="round"
-        />
-      </svg>
-
-        {label && <Label text={label} />}
+        {label && labelPosition === "left" && <Label text={label} position={labelPosition} />}
+        {knobSvg}
+        {label && labelPosition !== "left" && <Label text={label} position={labelPosition} />}
       </div>
     </Tooltip>
   );
