@@ -1,9 +1,12 @@
+import { useEffect, useState } from "react";
+import { useRuntimeStateGetter } from "../../graph/hooks/useNodeRuntimeState";
 import type { GraphNode } from "../../graph/types";
 import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
 import { Knob, RadioGroup } from "../../ui/components";
 import { ThemeProvider } from "../../ui/context";
 import { FilterTypeIcon } from "../../ui/icons";
 import type { ControlTheme, OptionDef } from "../../ui/types";
+import type { FilterRuntimeState } from "./audio";
 import type { FilterType } from "./types";
 
 type FilterNodeGraph = Extract<GraphNode, { type: "filter" }>;
@@ -38,7 +41,29 @@ const typeOptions: OptionDef<FilterType>[] = [
   { value: "highpass", content: <FilterTypeIcon type="highpass" />, ariaLabel: "Highpass" },
 ];
 
-const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode, startBatch, endBatch }) => {
+const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode, startBatch, endBatch, audioState }) => {
+  const getRuntimeState = useRuntimeStateGetter<FilterRuntimeState>(node.id);
+  const [modulatedFreq, setModulatedFreq] = useState<number | undefined>(undefined);
+
+  // Poll runtime state for modulation display when audio is running
+  useEffect(() => {
+    if (audioState !== "running") {
+      setModulatedFreq(undefined);
+      return;
+    }
+
+    let raf = 0;
+    const tick = () => {
+      const state = getRuntimeState();
+      if (state) {
+        setModulatedFreq(state.modulatedFrequency);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [getRuntimeState, audioState]);
+
   const nyquist = 22050; // UI clamp only; audio runtime clamps to actual nyquist.
   const freqHz = clamp(node.state.frequencyHz, 20, nyquist);
   const q = clamp(node.state.q, 0.0001, 30);
@@ -62,6 +87,7 @@ const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode, s
             unit="Hz"
             onDragStart={startBatch}
             onDragEnd={endBatch}
+            modulationValue={modulatedFreq}
           />
           <Knob
             value={q}

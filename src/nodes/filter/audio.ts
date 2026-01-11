@@ -4,6 +4,10 @@ import type { AudioNodeServices } from "../../types/nodeModule";
 
 type FilterGraphNode = Extract<GraphNode, { type: "filter" }>;
 
+export type FilterRuntimeState = {
+  modulatedFrequency: number;
+};
+
 function clamp(v: number, min: number, max: number): number {
   if (!Number.isFinite(v)) return min;
   return Math.max(min, Math.min(max, v));
@@ -27,6 +31,16 @@ function createFilterRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInsta
   freqCv.gain.value = 0;
   freqCv.connect(filter.frequency);
 
+  // Measure the CV signal going to filter.frequency
+  const cvMeter = ctx.createAnalyser();
+  cvMeter.fftSize = 256;
+  cvMeter.smoothingTimeConstant = 0.8;
+  const cvMeterBuffer = new Float32Array(cvMeter.fftSize) as Float32Array<ArrayBufferLike>;
+  freqCv.connect(cvMeter);
+
+  // Track base frequency for runtime state calculation
+  let baseFrequency = 1200;
+
   const meter = ctx.createAnalyser();
   meter.fftSize = 256;
   meter.smoothingTimeConstant = 0.6;
@@ -46,6 +60,7 @@ function createFilterRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInsta
       const q = clamp(state.q, 0.0001, 30);
       const envAmount = clamp(state.envAmountHz, 0, Math.max(0, nyquist - 10));
 
+      baseFrequency = f;
       filter.frequency.setTargetAtTime(f, now, 0.02);
       filter.Q.setTargetAtTime(q, now, 0.02);
       freqCv.gain.setTargetAtTime(envAmount, now, 0.02);
@@ -63,6 +78,7 @@ function createFilterRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInsta
       meter.disconnect();
       filter.disconnect();
       input.disconnect();
+      cvMeter.disconnect();
       try {
         freqCv.disconnect();
       } catch {
@@ -70,6 +86,16 @@ function createFilterRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInsta
       }
     },
     getLevel: () => rmsFromAnalyser(meter, meterBuffer),
+    getRuntimeState: (): FilterRuntimeState => {
+      // Read the average value from the CV meter (envelope * envAmount)
+      cvMeter.getFloatTimeDomainData(cvMeterBuffer as any);
+      let sum = 0;
+      for (let i = 0; i < cvMeterBuffer.length; i++) {
+        sum += cvMeterBuffer[i] ?? 0;
+      }
+      const cvValue = sum / cvMeterBuffer.length;
+      return { modulatedFrequency: baseFrequency + cvValue };
+    },
   };
 }
 
