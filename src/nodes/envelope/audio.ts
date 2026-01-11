@@ -4,6 +4,7 @@ import type {
   AudioNodeInstance,
 } from "../../types/audioRuntime";
 import type { AudioNodeServices } from "../../types/nodeModule";
+import { clamp01, shapedT } from "./curve";
 
 type EnvelopeGraphNode = Extract<GraphNode, { type: "envelope" }>;
 type EnvelopeNodeState = EnvelopeGraphNode["state"];
@@ -16,27 +17,6 @@ export type EnvelopeRuntimeState = {
   phaseProgress: number; // 0-1, how far through current phase
   activeNotes: number[];
 };
-
-function clamp01(v: number): number {
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(0, Math.min(1, v));
-}
-
-function clampShape(v: number): number {
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(-1, Math.min(1, v));
-}
-
-function gammaForShape(shape: number): number {
-  return Math.pow(2, clampShape(shape) * 4);
-}
-
-function shapedT(t: number, shape: number): number {
-  const tt = Math.max(0, Math.min(1, t));
-  const g = gammaForShape(shape);
-  if (g === 1) return tt;
-  return Math.pow(tt, g);
-}
 
 function makeCurve(
   start: number,

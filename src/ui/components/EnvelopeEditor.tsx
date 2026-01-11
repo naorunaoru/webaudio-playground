@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { EnvelopeEnv } from "../../nodes/envelope/types";
 import type { EnvelopeRuntimeState } from "../../nodes/envelope/audio";
+import { clamp01, clampShape, invTFromU } from "../../nodes/envelope/curve";
 
 type HandleKey = "a" | "d" | "r";
 type SegmentKey = "attack" | "decay" | "release";
@@ -17,29 +18,9 @@ export type EnvelopeEditorProps = Readonly<{
   onDragEnd?: () => void;
 }>;
 
-function clamp01(v: number): number {
-  return Math.max(0, Math.min(1, v));
-}
-
 function clampMs(v: number): number {
   if (!Number.isFinite(v)) return 0;
   return Math.max(0, Math.min(5000, v));
-}
-
-function clampShape(v: number): number {
-  if (!Number.isFinite(v)) return 0;
-  return Math.max(-1, Math.min(1, v));
-}
-
-function gammaForShape(shape: number): number {
-  return Math.pow(2, clampShape(shape) * 4);
-}
-
-function invTFromU(u: number, shape: number): number {
-  const uu = clamp01(u);
-  const g = gammaForShape(shape);
-  if (g === 1) return uu;
-  return Math.pow(uu, 1 / g);
 }
 
 /** Convert envelope phase + progress to a playhead position in ms */
@@ -468,7 +449,7 @@ export function EnvelopeEditor({
         const deltaY = py - drag.startY;
         const nextShape = clampShape(
           drag.startShape +
-            (activeSegment === "attack" ? 1 : -1) * (deltaY / (120 * dpr)),
+            (activeSegment === "attack" ? -1 : 1) * (deltaY / (120 * dpr)),
         );
         if (activeSegment === "attack")
           onChangeEnv({ ...env, attackShape: nextShape });
