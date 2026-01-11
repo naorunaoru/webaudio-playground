@@ -1,9 +1,10 @@
 import type React from "react";
 import type {
-  DragState,
+  ConnectionEndpoint,
   GraphNode,
   MidiEvent,
   NodeId,
+  PortKind,
   PortSpec,
 } from "@graph/types";
 import { portKindColor } from "@graph/nodeRegistry";
@@ -35,7 +36,9 @@ export type GraphNodeCardProps = {
   scrollRef: React.RefObject<{ x: number; y: number } | null>;
   onRegisterNodeEl: (nodeId: NodeId, el: HTMLElement | null) => void;
   onSelectNode: (nodeId: NodeId) => void;
-  onStartDrag: (drag: DragState) => void;
+  onStartNodeDrag: (nodeId: NodeId, pointerX: number, pointerY: number) => void;
+  onStartConnectionDrag: (from: ConnectionEndpoint, kind: PortKind, x: number, y: number) => void;
+  onEndDrag: () => void;
   onPatchNode: (nodeId: NodeId, patch: Partial<any>) => void;
   onPatchNodeEphemeral?: (nodeId: NodeId, patch: Partial<any>) => void;
   onEmitMidi: (nodeId: NodeId, event: MidiEvent) => Promise<void>;
@@ -57,7 +60,9 @@ export function GraphNodeCard({
   scrollRef,
   onRegisterNodeEl,
   onSelectNode,
-  onStartDrag,
+  onStartNodeDrag,
+  onStartConnectionDrag,
+  onEndDrag,
   onPatchNode,
   onPatchNodeEphemeral,
   onEmitMidi,
@@ -75,18 +80,13 @@ export function GraphNodeCard({
     onSelectNode(node.id);
     const p = localPointFromPointerEvent(rootRef.current, e);
     const gp = viewToWorld(p, scrollRef.current.x, scrollRef.current.y);
-    onStartDrag({
-      type: "moveNode",
-      nodeId: node.id,
-      offsetX: gp.x - node.x,
-      offsetY: gp.y - node.y,
-    });
+    onStartNodeDrag(node.id, gp.x, gp.y);
     (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
   };
 
   const handleHeaderPointerUp = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLDivElement).releasePointerCapture(e.pointerId);
-    onStartDrag({ type: "none" });
+    onEndDrag();
   };
 
   const handlePortPointerDown =
@@ -96,13 +96,12 @@ export function GraphNodeCard({
       if (port.direction !== "out") return;
       const p = localPointFromPointerEvent(rootRef.current, e);
       const gp = viewToWorld(p, scrollRef.current.x, scrollRef.current.y);
-      onStartDrag({
-        type: "connect",
-        from: { nodeId: node.id, portId: port.id },
-        kind: port.kind,
-        toX: gp.x,
-        toY: gp.y,
-      });
+      onStartConnectionDrag(
+        { nodeId: node.id, portId: port.id },
+        port.kind,
+        gp.x,
+        gp.y
+      );
     };
 
   return (

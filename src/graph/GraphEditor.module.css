@@ -215,3 +215,11 @@
 .nodeUi :global(button) {
   cursor: pointer;
 }
+
+.marquee {
+  position: absolute;
+  border: 1px solid rgba(136, 192, 208, 0.8);
+  background: rgba(136, 192, 208, 0.15);
+  pointer-events: none;
+  z-index: 10;
+}

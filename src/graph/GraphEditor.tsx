@@ -14,10 +14,15 @@ import type {
   ConnectionEndpoint,
   GraphConnection,
   GraphNode,
+  PortKind,
 } from "./types";
 import { getNodeDef } from "./nodeRegistry";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
-import { bezierPath } from "./coordinates";
+import {
+  bezierPath,
+  localPointFromPointerEvent,
+  viewToWorld,
+} from "./coordinates";
 import { canConnect, portColumnIndex, portMetaForNode } from "./graphUtils";
 import { useDragInteraction, useNodeWidths } from "./hooks";
 import {
@@ -57,14 +62,17 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     const [status, setStatus] = useState<string | null>(null);
 
-    const { selected, selectNode, selectConnection, deselect } = useSelection();
+    const { selected, selectNodes, selectConnection, deselect } =
+      useSelection();
     const { emitMidi } = useMidi();
 
     const { nodeWidths, registerNodeEl } = useNodeWidths();
 
-    const handleMoveNode = useCallback(
-      (nodeId: string, x: number, y: number) => {
-        moveNode(nodeId, x, y);
+    const handleMoveNodes = useCallback(
+      (moves: Map<string, { x: number; y: number }>) => {
+        for (const [nodeId, pos] of moves) {
+          moveNode(nodeId, pos.x, pos.y);
+        }
       },
       [moveNode]
     );
@@ -101,7 +109,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     const { drag, setDrag } = useDragInteraction({
       rootRef,
       scrollRef,
-      onMoveNode: handleMoveNode,
+      onMoveNodes: handleMoveNodes,
       onConnect: handleConnect,
       onDragStart: startBatch,
       onDragEnd: endBatch,
@@ -145,7 +153,12 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     // Build render cache
     const renderCache = useMemo(() => {
-      if (!graph) return { nodes: [], connections: [], connectedPortsByNode: new Map<string, Set<string>>() };
+      if (!graph)
+        return {
+          nodes: [],
+          connections: [],
+          connectedPortsByNode: new Map<string, Set<string>>(),
+        };
 
       // Compute connected ports per node
       const connectedPortsByNode = new Map<string, Set<string>>();
@@ -243,8 +256,10 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     const handleKeyDown = useCallback(
       (e: React.KeyboardEvent) => {
         if (e.key === "Backspace" || e.key === "Delete") {
-          if (selected.type === "node") {
-            deleteNode(selected.nodeId);
+          if (selected.type === "nodes") {
+            for (const nodeId of selected.nodeIds) {
+              deleteNode(nodeId);
+            }
             deselect();
             return;
           }
@@ -263,7 +278,13 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     const handleSelectNode = useCallback(
       (nodeId: string) => {
-        selectNode(nodeId);
+        // Don't change selection if the node is already part of the current selection
+        const isAlreadySelected =
+          selected.type === "nodes" && selected.nodeIds.has(nodeId);
+
+        if (!isAlreadySelected) {
+          selectNodes(nodeId);
+        }
 
         if (!graph) return;
 
@@ -290,16 +311,173 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
         setZOrder(nodeId, newZ);
       },
-      [graph, setZOrder, selectNode]
+      [graph, selected, setZOrder, selectNodes]
     );
 
-    const handleSelectConnection = useCallback((connectionId: string) => {
-      selectConnection(connectionId);
-    }, [selectConnection]);
+    const handleSelectConnection = useCallback(
+      (connectionId: string) => {
+        selectConnection(connectionId);
+      },
+      [selectConnection]
+    );
 
     const handleFocusRoot = useCallback(() => {
       rootRef.current?.focus();
     }, []);
+
+    const handleStartNodeDrag = useCallback(
+      (nodeId: string, pointerX: number, pointerY: number) => {
+        if (!graph) return;
+
+        // If clicked node is part of selection, drag all selected nodes
+        // Otherwise just drag the clicked node
+        const nodesToDrag =
+          selected.type === "nodes" && selected.nodeIds.has(nodeId)
+            ? selected.nodeIds
+            : new Set([nodeId]);
+
+        // Build offsets for all nodes
+        const nodeOffsets = new Map<
+          string,
+          { offsetX: number; offsetY: number }
+        >();
+        for (const id of nodesToDrag) {
+          const node = graph.nodes.find((n) => n.id === id);
+          if (node) {
+            nodeOffsets.set(id, {
+              offsetX: pointerX - node.x,
+              offsetY: pointerY - node.y,
+            });
+          }
+        }
+
+        setDrag({ type: "moveNodes", nodeOffsets });
+      },
+      [graph, selected, setDrag]
+    );
+
+    const handleStartConnectionDrag = useCallback(
+      (from: ConnectionEndpoint, kind: PortKind, x: number, y: number) => {
+        setDrag({ type: "connect", from, kind, toX: x, toY: y });
+      },
+      [setDrag]
+    );
+
+    const handleEndDrag = useCallback(() => {
+      setDrag({ type: "none" });
+    }, [setDrag]);
+
+    // Marquee selection handlers
+    const handleWorldPointerDown = useCallback(
+      (e: React.PointerEvent) => {
+        // Only start marquee on left mouse button, directly on the world/canvas
+        if (e.button !== 0) return;
+        if (drag.type !== "none") return;
+
+        const root = rootRef.current;
+        if (!root) return;
+
+        // Get world coordinates
+        const local = localPointFromPointerEvent(root, e);
+        const world = viewToWorld(
+          local,
+          scrollRef.current.x,
+          scrollRef.current.y
+        );
+
+        setDrag({
+          type: "marquee",
+          startX: world.x,
+          startY: world.y,
+          currentX: world.x,
+          currentY: world.y,
+        });
+
+        deselect();
+      },
+      [drag.type, setDrag, deselect]
+    );
+
+    const handleWorldPointerMove = useCallback(
+      (e: React.PointerEvent) => {
+        if (drag.type !== "marquee") return;
+
+        const root = rootRef.current;
+        if (!root) return;
+
+        const local = localPointFromPointerEvent(root, e);
+        const world = viewToWorld(
+          local,
+          scrollRef.current.x,
+          scrollRef.current.y
+        );
+
+        setDrag({
+          ...drag,
+          currentX: world.x,
+          currentY: world.y,
+        });
+      },
+      [drag, setDrag]
+    );
+
+    const handleWorldPointerUp = useCallback(
+      (e: React.PointerEvent) => {
+        if (drag.type !== "marquee") return;
+        if (!graph) return;
+
+        const root = rootRef.current;
+        if (!root) return;
+
+        const local = localPointFromPointerEvent(root, e);
+        const world = viewToWorld(
+          local,
+          scrollRef.current.x,
+          scrollRef.current.y
+        );
+
+        // Calculate marquee bounds
+        const minX = Math.min(drag.startX, world.x);
+        const maxX = Math.max(drag.startX, world.x);
+        const minY = Math.min(drag.startY, world.y);
+        const maxY = Math.max(drag.startY, world.y);
+
+        // Find nodes within the marquee
+        const selectedNodeIds = new Set<string>();
+        for (const node of graph.nodes) {
+          const nodeWidth = nodeWidths[node.id] ?? 240;
+          const nodeH =
+            renderCache.nodes.find((n) => n.node.id === node.id)?.height ?? 200;
+
+          // Check if node intersects with marquee
+          const nodeRight = node.x + nodeWidth;
+          const nodeBottom = node.y + nodeH;
+
+          if (
+            node.x < maxX &&
+            nodeRight > minX &&
+            node.y < maxY &&
+            nodeBottom > minY
+          ) {
+            selectedNodeIds.add(node.id);
+          }
+        }
+
+        selectNodes(selectedNodeIds);
+        setDrag({ type: "none" });
+      },
+      [drag, graph, nodeWidths, renderCache.nodes, selectNodes, setDrag]
+    );
+
+    // Compute marquee rectangle for rendering
+    const marqueeRect = useMemo(() => {
+      if (drag.type !== "marquee") return null;
+      const x = Math.min(drag.startX, drag.currentX);
+      const y = Math.min(drag.startY, drag.currentY);
+      const width = Math.abs(drag.currentX - drag.startX);
+      const height = Math.abs(drag.currentY - drag.startY);
+      return { x, y, width, height };
+    }, [drag]);
 
     if (!graph) {
       return <div className={styles.root}>Loading...</div>;
@@ -316,6 +494,9 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         <div
           className={styles.world}
           style={{ width: worldSize.width, height: worldSize.height }}
+          onPointerDown={handleWorldPointerDown}
+          onPointerMove={handleWorldPointerMove}
+          onPointerUp={handleWorldPointerUp}
         >
           <svg className={styles.canvas}>
             {renderCache.connections.map(({ connection, d }) => (
@@ -352,18 +533,22 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                     title={title}
                     ports={ports}
                     isSelected={
-                      selected.type === "node" && selected.nodeId === node.id
+                      selected.type === "nodes" && selected.nodeIds.has(node.id)
                     }
                     zIndex={graph.nodeZOrder?.[node.id] ?? 0}
                     audioState={audioState}
                     midiVisible={midiVisible}
-                    connectedPorts={renderCache.connectedPortsByNode.get(node.id)}
+                    connectedPorts={renderCache.connectedPortsByNode.get(
+                      node.id
+                    )}
                     Ui={Ui}
                     rootRef={rootRef}
                     scrollRef={scrollRef}
                     onRegisterNodeEl={registerNodeEl}
                     onSelectNode={handleSelectNode}
-                    onStartDrag={setDrag}
+                    onStartNodeDrag={handleStartNodeDrag}
+                    onStartConnectionDrag={handleStartConnectionDrag}
+                    onEndDrag={handleEndDrag}
                     onPatchNode={handlePatchNode}
                     onEmitMidi={emitMidi}
                     startBatch={startBatch}
@@ -373,6 +558,18 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
               })}
             </div>
           </div>
+
+          {marqueeRect && (
+            <div
+              className={styles.marquee}
+              style={{
+                left: marqueeRect.x,
+                top: marqueeRect.y,
+                width: marqueeRect.width,
+                height: marqueeRect.height,
+              }}
+            />
+          )}
         </div>
 
         <GraphHUD status={status} />

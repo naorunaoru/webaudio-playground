@@ -9,7 +9,7 @@ import type { Selected, NodeId, ConnectionId } from "@graph/types";
 
 type SelectionContextValue = {
   selected: Selected;
-  selectNode: (nodeId: NodeId) => void;
+  selectNodes: (nodeIds: NodeId | Set<NodeId>) => void;
   selectConnection: (connectionId: ConnectionId) => void;
   deselect: () => void;
 };
@@ -19,8 +19,14 @@ const SelectionContext = createContext<SelectionContextValue | null>(null);
 export function SelectionProvider({ children }: { children: ReactNode }) {
   const [selected, setSelected] = useState<Selected>({ type: "none" });
 
-  const selectNode = useCallback((nodeId: NodeId) => {
-    setSelected({ type: "node", nodeId });
+  const selectNodes = useCallback((nodeIds: NodeId | Set<NodeId>) => {
+    if (typeof nodeIds === "string") {
+      setSelected({ type: "nodes", nodeIds: new Set([nodeIds]) });
+    } else if (nodeIds.size === 0) {
+      setSelected({ type: "none" });
+    } else {
+      setSelected({ type: "nodes", nodeIds });
+    }
   }, []);
 
   const selectConnection = useCallback((connectionId: ConnectionId) => {
@@ -33,7 +39,7 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
 
   const value: SelectionContextValue = {
     selected,
-    selectNode,
+    selectNodes,
     selectConnection,
     deselect,
   };

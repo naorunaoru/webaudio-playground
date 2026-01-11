@@ -76,10 +76,8 @@ export type MidiEvent =
 export type DragState =
   | { type: "none" }
   | {
-      type: "moveNode";
-      nodeId: NodeId;
-      offsetX: number;
-      offsetY: number;
+      type: "moveNodes";
+      nodeOffsets: Map<NodeId, { offsetX: number; offsetY: number }>;
     }
   | {
       type: "connect";
@@ -87,9 +85,16 @@ export type DragState =
       kind: PortKind;
       toX: number;
       toY: number;
+    }
+  | {
+      type: "marquee";
+      startX: number;
+      startY: number;
+      currentX: number;
+      currentY: number;
     };
 
 export type Selected =
   | { type: "none" }
-  | { type: "node"; nodeId: NodeId }
+  | { type: "nodes"; nodeIds: Set<NodeId> }
   | { type: "connection"; connectionId: ConnectionId };

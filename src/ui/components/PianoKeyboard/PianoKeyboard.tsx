@@ -37,7 +37,9 @@ export function PianoKeyboard({
   const draggingPointers = useRef<Set<number>>(new Set()); // pointers currently held down
 
   const targetNodeId: NodeId | null =
-    selected.type === "node" ? selected.nodeId : null;
+    selected.type === "nodes" && selected.nodeIds.size === 1
+      ? [...selected.nodeIds][0]!
+      : null;
 
   // Subscribe to MIDI events dispatched to the target node
   const externalActiveNotes = useMidiActiveNotes(targetNodeId);

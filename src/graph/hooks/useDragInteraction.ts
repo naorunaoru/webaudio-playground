@@ -5,7 +5,7 @@ import { localPointFromClientPoint, viewToWorld } from "@graph/coordinates";
 type UseDragInteractionOptions = {
   rootRef: React.RefObject<HTMLElement | null>;
   scrollRef: React.RefObject<{ x: number; y: number } | null>;
-  onMoveNode: (nodeId: string, x: number, y: number) => void;
+  onMoveNodes: (moves: Map<string, { x: number; y: number }>) => void;
   onConnect: (from: ConnectionEndpoint, to: ConnectionEndpoint) => void;
   onDragStart?: () => void;
   onDragEnd?: () => void;
@@ -14,7 +14,7 @@ type UseDragInteractionOptions = {
 export function useDragInteraction({
   rootRef,
   scrollRef,
-  onMoveNode,
+  onMoveNodes,
   onConnect,
   onDragStart,
   onDragEnd,
@@ -52,12 +52,15 @@ export function useDragInteraction({
       const p = localPointFromClientPoint(root, e.clientX, e.clientY);
       const gp = viewToWorld(p, currentScroll.x, currentScroll.y);
 
-      if (currentDrag.type === "moveNode") {
-        onMoveNode(
-          currentDrag.nodeId,
-          gp.x - currentDrag.offsetX,
-          gp.y - currentDrag.offsetY
-        );
+      if (currentDrag.type === "moveNodes") {
+        const moves = new Map<string, { x: number; y: number }>();
+        for (const [nodeId, offset] of currentDrag.nodeOffsets) {
+          moves.set(nodeId, {
+            x: gp.x - offset.offsetX,
+            y: gp.y - offset.offsetY,
+          });
+        }
+        onMoveNodes(moves);
         return;
       }
 
@@ -99,7 +102,7 @@ export function useDragInteraction({
       window.removeEventListener("pointermove", onPointerMove);
       window.removeEventListener("pointerup", onPointerUp);
     };
-  }, [drag.type, rootRef, scrollRef, onMoveNode, onConnect]);
+  }, [drag.type, rootRef, scrollRef, onMoveNodes, onConnect]);
 
   return { drag, setDrag };
 }
