@@ -13,9 +13,6 @@ export type EnvelopeEnv = {
 
 export type EnvelopeState = {
   env: EnvelopeEnv;
-  lastMidiNote: number | null;
-  lastMidiAtMs: number | null;
-  lastMidiOffAtMs: number | null;
 };
 
 declare module "../../graph/types" {

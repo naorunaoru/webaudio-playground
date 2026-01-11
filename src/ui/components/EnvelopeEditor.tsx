@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EnvelopeEnv } from "../../nodes/envelope/types";
+import type { EnvelopeRuntimeState } from "../../nodes/envelope/audio";
 
 type HandleKey = "a" | "d" | "r";
 type SegmentKey = "attack" | "decay" | "release";
@@ -9,11 +10,8 @@ const HANDLE_BLEED_PX = 8;
 export type EnvelopeEditorProps = Readonly<{
   env: EnvelopeEnv;
   onChangeEnv: (next: EnvelopeEnv) => void;
-  /** Milliseconds timestamp (from `performance.now()`) when the envelope was triggered. */
-  noteOnAtMs?: number | null;
-  /** Milliseconds timestamp (from `performance.now()`) when the envelope was released. */
-  noteOffAtMs?: number | null;
-  holdMs?: number;
+  /** Getter function to read runtime state on-demand (called in rAF loop for smooth animation) */
+  getRuntimeState?: () => EnvelopeRuntimeState | undefined;
   height?: number;
   onDragStart?: () => void;
   onDragEnd?: () => void;
@@ -37,16 +35,6 @@ function gammaForShape(shape: number): number {
   return Math.pow(2, clampShape(shape) * 4);
 }
 
-function shapedUFromT(t: number, shape: number): number {
-  const tt = clamp01(t);
-  const g = gammaForShape(shape);
-  if (g === 1) return tt;
-  // Ease-in power curve:
-  // - g > 1 => slower at start (exp-ish), faster at end
-  // - g < 1 => faster at start (log-ish), slower at end
-  return Math.pow(tt, g);
-}
-
 function invTFromU(u: number, shape: number): number {
   const uu = clamp01(u);
   const g = gammaForShape(shape);
@@ -54,48 +42,29 @@ function invTFromU(u: number, shape: number): number {
   return Math.pow(uu, 1 / g);
 }
 
-function levelAtMs(ms: number, env: EnvelopeEnv, holdMs: number): number {
+/** Convert envelope phase + progress to a playhead position in ms */
+function computePlayheadMs(
+  env: EnvelopeEnv,
+  phase: EnvelopeRuntimeState["phase"],
+  phaseProgress: number
+): number {
   const a = Math.max(0, env.attackMs);
   const d = Math.max(0, env.decayMs);
   const r = Math.max(0, env.releaseMs);
 
-  const tA = a;
-  const tD = a + d;
-  const tS = a + d + holdMs;
-  const tR = a + d + holdMs + r;
-
-  if (ms <= 0) return 0;
-  if (ms < tA) {
-    const t = ms / Math.max(1, a);
-    return shapedUFromT(t, env.attackShape);
+  switch (phase) {
+    case "attack":
+      return a * phaseProgress;
+    case "decay":
+      return a + d * phaseProgress;
+    case "sustain":
+      return a + d; // At the end of decay
+    case "release":
+      return a + d + r * phaseProgress;
+    case "idle":
+    default:
+      return 0;
   }
-  if (ms < tD) {
-    const t = (ms - tA) / Math.max(1, d);
-    const u = shapedUFromT(t, env.decayShape);
-    return 1 + (clamp01(env.sustain) - 1) * u;
-  }
-  if (ms < tS) return clamp01(env.sustain);
-  if (ms < tR) {
-    const t = (ms - tS) / Math.max(1, r);
-    const u = shapedUFromT(t, env.releaseShape);
-    return clamp01(env.sustain) * (1 - u);
-  }
-  return 0;
-}
-
-function levelAfterRelease(
-  playheadMs: number,
-  env: EnvelopeEnv,
-  holdMs: number,
-  releaseStartMs: number,
-  releaseMs: number
-): number {
-  if (playheadMs <= releaseStartMs) return levelAtMs(playheadMs, env, holdMs);
-  if (releaseMs <= 0) return 0;
-  const startLevel = levelAtMs(releaseStartMs, env, holdMs);
-  const t = (playheadMs - releaseStartMs) / releaseMs;
-  const u = shapedUFromT(t, env.releaseShape);
-  return startLevel * (1 - u);
 }
 
 function segmentPoints(
@@ -247,9 +216,7 @@ function getCanvasMetrics(canvas: HTMLCanvasElement) {
 export function EnvelopeEditor({
   env,
   onChangeEnv,
-  noteOnAtMs = null,
-  noteOffAtMs = null,
-  holdMs = 240,
+  getRuntimeState,
   height = 86,
   onDragStart,
   onDragEnd,
@@ -264,158 +231,43 @@ export function EnvelopeEditor({
     startShape: number;
   } | null>(null);
 
-  const [nowMs, setNowMs] = useState(() => performance.now());
+  // Keep refs for values needed in the rAF loop to avoid stale closures
+  const envRef = useRef(env);
+  const activeHandleRef = useRef(activeHandle);
+  envRef.current = env;
+  activeHandleRef.current = activeHandle;
 
-  const [visualOnAtMs, setVisualOnAtMs] = useState<number | null>(noteOnAtMs);
-  const [visualOffAtMs, setVisualOffAtMs] = useState<number | null>(noteOffAtMs);
-  const visualTimesRef = useRef<{ on: number | null; off: number | null }>({
-    on: noteOnAtMs,
-    off: noteOffAtMs,
-  });
-  const prevEnvRef = useRef(env);
-
-  useEffect(() => {
-    setVisualOnAtMs(noteOnAtMs);
-    setVisualOffAtMs(noteOffAtMs);
-    visualTimesRef.current = { on: noteOnAtMs, off: noteOffAtMs };
-    prevEnvRef.current = env;
-    setNowMs(performance.now());
-  }, [noteOnAtMs]);
-
-  useEffect(() => {
-    setVisualOffAtMs(noteOffAtMs);
-    visualTimesRef.current = { ...visualTimesRef.current, off: noteOffAtMs };
-    setNowMs(performance.now());
-  }, [noteOffAtMs]);
-
-  const totalMs = (e: EnvelopeEnv) => Math.max(1, e.attackMs + e.decayMs + e.releaseMs);
-  const sustainEndMs = (e: EnvelopeEnv) => Math.max(0, e.attackMs) + Math.max(0, e.decayMs);
-  const computePlayheadMs = (
-    now: number,
-    e: EnvelopeEnv,
-    onAt: number | null,
-    offAt: number | null,
-  ): number | null => {
-    if (onAt == null) return null;
-    const on = onAt;
-    const off = offAt != null && offAt >= on ? offAt : null;
-    const sustainEnd = sustainEndMs(e);
-    if (off == null) return Math.min(Math.max(0, now - on), sustainEnd);
-
-    const offDelta = Math.max(0, off - on);
-    const releaseStart = Math.min(offDelta, sustainEnd);
-    const releaseElapsed = Math.max(0, now - off);
-    return releaseStart + Math.min(releaseElapsed, Math.max(0, e.releaseMs));
-  };
-
-  useEffect(() => {
-    const prevEnv = prevEnvRef.current;
-    prevEnvRef.current = env;
-
-    const { on, off } = visualTimesRef.current;
-    if (on == null) {
-      setNowMs(performance.now());
-      return;
-    }
-
-    const now = performance.now();
-    const oldTotal = totalMs(prevEnv);
-    const newTotal = totalMs(env);
-    const oldPlayhead = computePlayheadMs(now, prevEnv, on, off);
-    if (oldPlayhead == null) {
-      setNowMs(now);
-      return;
-    }
-
-    const x01 = Math.max(0, Math.min(1, oldPlayhead / oldTotal));
-    const desired = x01 * newTotal;
-
-    const newSustainEnd = sustainEndMs(env);
-
-    if (off == null || off < on) {
-      const clamped = Math.min(Math.max(0, desired), newSustainEnd);
-      const nextOn = now - clamped;
-      visualTimesRef.current = { on: nextOn, off: null };
-      setVisualOnAtMs(nextOn);
-      setVisualOffAtMs(null);
-      setNowMs(now);
-      return;
-    }
-
-    const offDelta = Math.max(0, off - on);
-    const releaseStart = Math.min(offDelta, newSustainEnd);
-    const desiredReleaseElapsed = desired - releaseStart;
-    const clampedReleaseElapsed = Math.max(0, Math.min(env.releaseMs, desiredReleaseElapsed));
-
-    const nextOff = now - clampedReleaseElapsed;
-    const nextOn = nextOff - offDelta;
-    visualTimesRef.current = { on: nextOn, off: nextOff };
-    setVisualOnAtMs(nextOn);
-    setVisualOffAtMs(nextOff);
-    setNowMs(now);
-  }, [env.attackMs, env.decayMs, env.releaseMs]);
-  useEffect(() => {
-    if (visualOnAtMs == null) return;
-    const startOn = visualOnAtMs;
-
-    let raf = 0;
-    const tick = () => {
-      const now = performance.now();
-      setNowMs(now);
-      const sustainEnd = Math.max(0, env.attackMs) + Math.max(0, env.decayMs);
-      if (visualOffAtMs == null || visualOffAtMs < startOn) {
-        if (now - startOn < sustainEnd) raf = requestAnimationFrame(tick);
-      } else {
-        const releaseMs = Math.max(0, env.releaseMs);
-        if (now - visualOffAtMs < releaseMs) raf = requestAnimationFrame(tick);
-      }
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [
-    visualOnAtMs,
-    visualOffAtMs,
-    env.attackMs,
-    env.decayMs,
-    env.releaseMs,
-    holdMs,
-  ]);
-
-  const playhead = useMemo(() => {
-    if (visualOnAtMs == null) return null;
-    const sustainEndMs = Math.max(0, env.attackMs) + Math.max(0, env.decayMs);
-    const now = nowMs;
-
-    if (visualOffAtMs == null || visualOffAtMs < visualOnAtMs) {
-      const ms = Math.min(Math.max(0, now - visualOnAtMs), sustainEndMs);
-      return { ms, level: levelAtMs(ms, env, holdMs) };
-    }
-
-    const releaseStartMs = Math.min(
-      Math.max(0, visualOffAtMs - visualOnAtMs),
-      sustainEndMs
-    );
-    const releaseElapsedMs = Math.max(0, now - visualOffAtMs);
-    const releaseMs = Math.max(0, env.releaseMs);
-    const ms = releaseStartMs + Math.min(releaseElapsedMs, releaseMs);
-    return {
-      ms,
-      level: levelAfterRelease(ms, env, holdMs, releaseStartMs, releaseMs),
-    };
-  }, [env, holdMs, visualOnAtMs, visualOffAtMs, nowMs]);
-
+  // Animation loop that polls runtime state on-demand for smooth 60fps playhead
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const { dpr, width, height } = getCanvasMetrics(canvas);
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
+    let raf = 0;
+    const draw = () => {
+      const currentEnv = envRef.current;
+      const { dpr, width, height } = getCanvasMetrics(canvas);
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
 
-    drawEnvelope(ctx, width, height, dpr, env, activeHandle, playhead);
-  }, [env, activeHandle, holdMs, playhead]);
+      // Poll runtime state fresh each frame
+      const runtimeState = getRuntimeState?.();
+      const playhead =
+        runtimeState && runtimeState.phase !== "idle"
+          ? {
+              ms: computePlayheadMs(currentEnv, runtimeState.phase, runtimeState.phaseProgress),
+              level: runtimeState.currentLevel,
+            }
+          : null;
+
+      drawEnvelope(ctx, width, height, dpr, currentEnv, activeHandleRef.current, playhead);
+      raf = requestAnimationFrame(draw);
+    };
+
+    raf = requestAnimationFrame(draw);
+    return () => cancelAnimationFrame(raf);
+  }, [getRuntimeState]);
 
   return (
     <div

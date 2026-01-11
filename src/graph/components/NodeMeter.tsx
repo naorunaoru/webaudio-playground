@@ -12,7 +12,12 @@ export type NodeMeterProps = {
 
 const METER_SIZE = 10;
 
-export function NodeMeter({ nodeId, nodeType, audioState, color }: NodeMeterProps) {
+export function NodeMeter({
+  nodeId,
+  nodeType,
+  audioState,
+  color,
+}: NodeMeterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
 

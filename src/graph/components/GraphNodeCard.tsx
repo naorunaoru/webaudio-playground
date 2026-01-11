@@ -25,11 +25,10 @@ export type GraphNodeCardProps = {
     onPatchNode: (nodeId: NodeId, patch: Partial<any>) => void;
     onPatchNodeEphemeral?: (nodeId: NodeId, patch: Partial<any>) => void;
     onEmitMidi: (nodeId: NodeId, event: MidiEvent) => Promise<void>;
-    runtimeState: unknown;
+    audioState?: AudioContextState | "off";
     startBatch?: () => void;
     endBatch?: () => void;
   }>;
-  runtimeState: unknown;
   rootRef: React.RefObject<HTMLElement | null>;
   scrollRef: React.RefObject<{ x: number; y: number } | null>;
   onRegisterNodeEl: (nodeId: NodeId, el: HTMLElement | null) => void;
@@ -51,7 +50,6 @@ export function GraphNodeCard({
   audioState,
   midiVisible,
   Ui,
-  runtimeState,
   rootRef,
   scrollRef,
   onRegisterNodeEl,
@@ -177,7 +175,7 @@ export function GraphNodeCard({
           onPatchNode={onPatchNode}
           onPatchNodeEphemeral={onPatchNodeEphemeral}
           onEmitMidi={onEmitMidi}
-          runtimeState={runtimeState}
+          audioState={audioState}
           startBatch={startBatch}
           endBatch={endBatch}
         />

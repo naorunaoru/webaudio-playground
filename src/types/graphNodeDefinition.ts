@@ -7,7 +7,8 @@ export type NodeUiProps<TNode extends GraphNode> = Readonly<{
   /** Ephemeral patch - changes state without creating history entry (for MIDI triggers, playhead, etc.) */
   onPatchNodeEphemeral?: (nodeId: NodeId, patch: Partial<TNode["state"]>) => void;
   onEmitMidi?: (nodeId: NodeId, event: MidiEvent) => void | Promise<void>;
-  runtimeState?: unknown;
+  /** Audio context state - can be used to conditionally poll runtime state */
+  audioState?: AudioContextState | "off";
   startBatch?: () => void;
   endBatch?: () => void;
 }>;

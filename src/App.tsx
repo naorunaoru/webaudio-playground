@@ -13,7 +13,11 @@ import { GraphDocProvider, useGraphDoc } from "./state";
 import { SelectionProvider, MidiProvider } from "./contexts";
 import { createNode } from "./graph/graphUtils";
 import { MenuBar, MenuBarItem } from "./ui/components/MenuBar";
-import { MenuItem, MenuItemCheckbox, MenuSeparator } from "./ui/components/Menu";
+import {
+  MenuItem,
+  MenuItemCheckbox,
+  MenuSeparator,
+} from "./ui/components/Menu";
 import { FloatingPanel } from "./ui/components/FloatingPanel";
 import { PianoKeyboard } from "./ui/components/PianoKeyboard";
 import { NODE_MODULES } from "./nodes";
@@ -31,6 +35,38 @@ function readAudioDspLoad(
     any = true;
   }
   return any ? max : null;
+}
+
+function DspLoadDisplay({
+  audioState,
+}: {
+  audioState: AudioContextState | "off";
+}) {
+  const [dspLoad, setDspLoad] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (audioState === "running") {
+      const interval = window.setInterval(() => {
+        const engine = getAudioEngine();
+        setDspLoad(readAudioDspLoad(engine.getRuntimeState()));
+      }, 500);
+      return () => window.clearInterval(interval);
+    } else {
+      setDspLoad(null);
+    }
+  }, [audioState]);
+
+  return (
+    <div
+      className={styles.toolbarStat}
+      title="Approximate audio DSP load from custom AudioWorklet processors (not total system CPU)."
+    >
+      DSP:{" "}
+      <span className={styles.toolbarStatValue}>
+        {dspLoad == null ? "—" : `${Math.round(dspLoad * 100)}%`}
+      </span>
+    </div>
+  );
 }
 
 function AppContent() {
@@ -56,7 +92,6 @@ function AppContent() {
   const [audioState, setAudioState] = useState<AudioContextState | "off">(
     "off"
   );
-  const [dspLoad, setDspLoad] = useState<number | null>(null);
 
   // Keyboard state from persisted UI state
   const keyboardState = uiState.keyboard;
@@ -129,18 +164,6 @@ function AppContent() {
     };
   }, [ensureAudioRunning, graphState]);
 
-  useEffect(() => {
-    if (audioState === "running") {
-      const interval = window.setInterval(() => {
-        const engine = getAudioEngine();
-        setDspLoad(readAudioDspLoad(engine.getRuntimeState()));
-      }, 100);
-      return () => window.clearInterval(interval);
-    } else {
-      setDspLoad(null);
-    }
-  }, [audioState]);
-
   const handleExport = useCallback(async () => {
     if (!graphState) return;
 
@@ -211,10 +234,7 @@ function AppContent() {
         onPatchNodesEphemeral={patchMultipleNodesEphemeral}
       >
         <div className={styles.shell}>
-          <GraphEditor
-            ref={graphEditorRef}
-            audioState={audioState}
-          />
+          <GraphEditor ref={graphEditorRef} audioState={audioState} />
 
           <div className={styles.topBar}>
             <MenuBar menuOffset={{ y: 6 }}>
@@ -261,21 +281,16 @@ function AppContent() {
               </MenuBarItem>
 
               <MenuBarItem label="View" index={4}>
-                <MenuItemCheckbox checked={showKeyboard} onChange={setKeyboardVisible}>
+                <MenuItemCheckbox
+                  checked={showKeyboard}
+                  onChange={setKeyboardVisible}
+                >
                   Piano Keyboard
                 </MenuItemCheckbox>
               </MenuBarItem>
             </MenuBar>
 
-            <div
-              className={styles.toolbarStat}
-              title="Approximate audio DSP load from custom AudioWorklet processors (not total system CPU)."
-            >
-              DSP:{" "}
-              <span className={styles.toolbarStatValue}>
-                {dspLoad == null ? "—" : `${Math.round(dspLoad * 100)}%`}
-              </span>
-            </div>
+            <DspLoadDisplay audioState={audioState} />
           </div>
         </div>
 

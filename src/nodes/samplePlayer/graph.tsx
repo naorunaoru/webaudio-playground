@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { GraphNode } from "../../graph/types";
+import { useRuntimeStateGetter } from "../../graph/hooks";
 import type {
   NodeDefinition,
   NodeUiProps,
@@ -8,6 +9,12 @@ import { Button, Knob, NumericInput, RadioGroup } from "../../ui/components";
 import { SampleLibraryPanel } from "../../ui/components/SampleLibraryPanel";
 import { ThemeProvider } from "../../ui/context";
 import type { ControlTheme, OptionDef } from "../../ui/types";
+
+type SamplePlayerRuntimeState = {
+  sampleId: string | null;
+  error: string | null;
+  voices: number;
+};
 
 type SamplePlayerNode = Extract<GraphNode, { type: "samplePlayer" }>;
 
@@ -42,13 +49,21 @@ function clamp(v: number, min: number, max: number): number {
 const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({
   node,
   onPatchNode,
-  runtimeState,
   startBatch,
   endBatch,
 }) => {
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const getRuntimeState = useRuntimeStateGetter<SamplePlayerRuntimeState>(node.id);
 
-  const debugError = (runtimeState as any)?.error as string | null | undefined;
+  // Poll for errors at a relaxed interval (doesn't need 60fps)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const state = getRuntimeState();
+      setError(state?.error ?? null);
+    }, 200);
+    return () => clearInterval(interval);
+  }, [getRuntimeState]);
 
   const currentLabel = useMemo(() => {
     if (!node.state.sampleId) return "(none)";
@@ -116,9 +131,9 @@ const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({
             )}
           </div>
 
-          {debugError && (
+          {error && (
             <div style={{ fontSize: 12, color: "rgba(191, 97, 106, 0.95)" }}>
-              {debugError}
+              {error}
             </div>
           )}
         </div>

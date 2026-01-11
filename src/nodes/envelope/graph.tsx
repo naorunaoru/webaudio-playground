@@ -1,4 +1,5 @@
 import type { GraphNode, MidiEvent } from "../../graph/types";
+import { useRuntimeStateGetter } from "../../graph/hooks";
 import type {
   NodeDefinition,
   NodeUiProps,
@@ -7,6 +8,7 @@ import { EnvelopeEditor } from "../../ui/components/EnvelopeEditor";
 import { NumericInput } from "../../ui/components/NumericInput";
 import { ThemeProvider } from "../../ui/context";
 import type { ControlTheme } from "../../ui/types/theme";
+import type { EnvelopeRuntimeState } from "./audio";
 
 const envelopeTheme: ControlTheme = {
   primary: "#ec4899", // Pink - envelope/modulation
@@ -41,9 +43,6 @@ function defaultState(): EnvelopeNode["state"] {
       decayShape: 0.6,
       releaseShape: 0.6,
     },
-    lastMidiNote: null,
-    lastMidiAtMs: null,
-    lastMidiOffAtMs: null,
   };
 }
 
@@ -68,19 +67,11 @@ function mapCcToEnvPatch(
 const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
   node,
   onPatchNode,
-  runtimeState,
   startBatch,
   endBatch,
 }) => {
+  const getRuntimeState = useRuntimeStateGetter<EnvelopeRuntimeState>(node.id);
   const env = node.state.env;
-  const dbg =
-    runtimeState && typeof runtimeState === "object"
-      ? (runtimeState as any)
-      : null;
-  const noteOnAtMs =
-    typeof dbg?.lastMidiAtMs === "number" ? dbg.lastMidiAtMs : null;
-  const noteOffAtMs =
-    typeof dbg?.lastMidiOffAtMs === "number" ? dbg.lastMidiOffAtMs : null;
 
   return (
     <ThemeProvider theme={envelopeTheme}>
@@ -88,8 +79,7 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
         <EnvelopeEditor
           env={env}
           onChangeEnv={(next) => onPatchNode(node.id, { env: next })}
-          noteOnAtMs={noteOnAtMs}
-          noteOffAtMs={noteOffAtMs}
+          getRuntimeState={getRuntimeState}
           onDragStart={startBatch}
           onDragEnd={endBatch}
         />
@@ -196,29 +186,10 @@ export const envelopeGraph: NodeDefinition<EnvelopeNode> = {
             d.env.releaseShape
         ),
       },
-      lastMidiNote: s.lastMidiNote ?? d.lastMidiNote,
-      lastMidiAtMs: s.lastMidiAtMs ?? d.lastMidiAtMs,
-      lastMidiOffAtMs: s.lastMidiOffAtMs ?? d.lastMidiOffAtMs,
     };
   },
   onMidi: (node, event, portId) => {
-    if (event.type === "noteOn") {
-      if (portId && portId !== "midi_in") return null;
-      return {
-        lastMidiNote: event.note,
-        lastMidiAtMs: event.atMs,
-        lastMidiOffAtMs: null,
-      };
-    }
-    if (event.type === "noteOff") {
-      if (portId && portId !== "midi_in") return null;
-      if (
-        node.state.lastMidiNote != null &&
-        node.state.lastMidiNote !== event.note
-      )
-        return null;
-      return { lastMidiOffAtMs: event.atMs };
-    }
+    // CC events still update envelope parameters
     return mapCcToEnvPatch(node, portId, event);
   },
 };

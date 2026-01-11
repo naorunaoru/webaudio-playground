@@ -1,6 +1,9 @@
 import type { GraphNode, MidiEvent, NodeId } from "../../graph/types";
 import { getSampleManager } from "../../audio/sampleManager";
-import type { AudioNodeFactory, AudioNodeInstance } from "../../types/audioRuntime";
+import type {
+  AudioNodeFactory,
+  AudioNodeInstance,
+} from "../../types/audioRuntime";
 import type { AudioNodeServices } from "../../types/nodeModule";
 
 type SamplePlayerGraphNode = Extract<GraphNode, { type: "samplePlayer" }>;
@@ -11,7 +14,10 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-function rmsFromAnalyser(analyser: AnalyserNode, buffer: Float32Array<ArrayBufferLike>): number {
+function rmsFromAnalyser(
+  analyser: AnalyserNode,
+  buffer: Float32Array<ArrayBufferLike>
+): number {
   analyser.getFloatTimeDomainData(buffer as any);
   let sum = 0;
   for (let i = 0; i < buffer.length; i++) {
@@ -21,14 +27,19 @@ function rmsFromAnalyser(analyser: AnalyserNode, buffer: Float32Array<ArrayBuffe
   return Math.sqrt(sum / buffer.length);
 }
 
-function createSamplePlayerRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstance<SamplePlayerGraphNode> {
+function createSamplePlayerRuntime(
+  ctx: AudioContext,
+  _nodeId: NodeId
+): AudioNodeInstance<SamplePlayerGraphNode> {
   const outGain = ctx.createGain();
   outGain.gain.value = 1;
 
   const meter = ctx.createAnalyser();
   meter.fftSize = 256;
   meter.smoothingTimeConstant = 0.6;
-  const meterBuffer = new Float32Array(meter.fftSize) as Float32Array<ArrayBufferLike>;
+  const meterBuffer = new Float32Array(
+    meter.fftSize
+  ) as Float32Array<ArrayBufferLike>;
 
   outGain.connect(meter);
 
@@ -37,7 +48,29 @@ function createSamplePlayerRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNod
   const MAX_VOICES = 32;
 
   let currentState: SamplePlayerRuntimeState | null = null;
-  let lastError: string | null = null;
+
+  let runtimeState: {
+    sampleId: string | null;
+    error: string | null;
+    voices: number;
+  } = {
+    sampleId: null,
+    error: null,
+    voices: 0,
+  };
+
+  function setRuntimeError(error: string | null) {
+    if (
+      error !== runtimeState.error ||
+      currentState?.sampleId !== runtimeState.sampleId
+    ) {
+      runtimeState = {
+        sampleId: currentState?.sampleId ?? null,
+        error,
+        voices: runtimeState.voices,
+      };
+    }
+  }
 
   function safeStop(src: AudioBufferSourceNode) {
     try {
@@ -73,25 +106,30 @@ function createSamplePlayerRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNod
     getSampleManager(ctx)
       .getBuffer(state.sampleId)
       .then(() => {
-        lastError = null;
+        setRuntimeError(null);
       })
       .catch((e) => {
-        lastError = e instanceof Error ? e.message : String(e);
+        setRuntimeError(e instanceof Error ? e.message : String(e));
       });
   }
 
-  function onNoteOn(event: Extract<MidiEvent, { type: "noteOn" }>, state: SamplePlayerRuntimeState) {
+  function onNoteOn(
+    event: Extract<MidiEvent, { type: "noteOn" }>,
+    state: SamplePlayerRuntimeState
+  ) {
     const sampleId = state.sampleId;
     if (!sampleId) return;
 
     const velocity01 = clamp(event.velocity / 127, 0, 1);
     const note = clamp(event.note, 0, 127);
-    const pitchRatio = state.followPitch ? Math.pow(2, (note - clamp(state.rootNote, 0, 127)) / 12) : 1;
+    const pitchRatio = state.followPitch
+      ? Math.pow(2, (note - clamp(state.rootNote, 0, 127)) / 12)
+      : 1;
 
     getSampleManager(ctx)
       .getBuffer(sampleId)
       .then((buffer) => {
-        lastError = null;
+        setRuntimeError(null);
         const src = ctx.createBufferSource();
         src.buffer = buffer;
         src.playbackRate.value = pitchRatio;
@@ -107,11 +145,14 @@ function createSamplePlayerRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNod
         src.start();
       })
       .catch((e) => {
-        lastError = e instanceof Error ? e.message : String(e);
+        setRuntimeError(e instanceof Error ? e.message : String(e));
       });
   }
 
-  function onNoteOff(event: Extract<MidiEvent, { type: "noteOff" }>, state: SamplePlayerRuntimeState) {
+  function onNoteOff(
+    event: Extract<MidiEvent, { type: "noteOff" }>,
+    state: SamplePlayerRuntimeState
+  ) {
     if (!state.stopOnNoteOff) return;
     const note = clamp(event.note, 0, 127);
     const set = activeByNote.get(note);
@@ -145,15 +186,13 @@ function createSamplePlayerRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNod
       outGain.disconnect();
     },
     getLevel: () => rmsFromAnalyser(meter, meterBuffer),
-    getRuntimeState: () => ({
-      sampleId: currentState?.sampleId ?? null,
-      error: lastError,
-      voices: activeSources.length,
-    }),
+    getRuntimeState: () => runtimeState,
   };
 }
 
-export function samplePlayerAudioFactory(_services: AudioNodeServices): AudioNodeFactory<SamplePlayerGraphNode> {
+export function samplePlayerAudioFactory(
+  _services: AudioNodeServices
+): AudioNodeFactory<SamplePlayerGraphNode> {
   return {
     type: "samplePlayer",
     create: (ctx, nodeId) => createSamplePlayerRuntime(ctx, nodeId),

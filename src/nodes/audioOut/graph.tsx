@@ -1,7 +1,10 @@
 import { useEffect, useRef } from "react";
 import { getAudioEngine } from "../../audio/engine";
 import type { GraphNode } from "../../graph/types";
-import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
+import type {
+  NodeDefinition,
+  NodeUiProps,
+} from "../../types/graphNodeDefinition";
 
 type AudioOutNode = Extract<GraphNode, { type: "audioOut" }>;
 
@@ -19,14 +22,23 @@ const AudioOutUi: React.FC<NodeUiProps<AudioOutNode>> = ({ node }) => {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const draw = () => {
-      const rect = canvas.getBoundingClientRect();
+    let width = 1;
+    let height = 1;
+
+    const updateSize = () => {
       const dpr = window.devicePixelRatio || 1;
-      const width = Math.max(1, Math.floor(rect.width * dpr));
-      const height = Math.max(1, Math.floor(rect.height * dpr));
+      const rect = canvas.getBoundingClientRect();
+      width = Math.max(1, Math.floor(rect.width * dpr));
+      height = Math.max(1, Math.floor(rect.height * dpr));
       if (canvas.width !== width) canvas.width = width;
       if (canvas.height !== height) canvas.height = height;
+    };
 
+    const resizeObserver = new ResizeObserver(updateSize);
+    resizeObserver.observe(canvas);
+    updateSize();
+
+    const draw = () => {
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = "rgba(0,0,0,0.22)";
       ctx.fillRect(0, 0, width, height);
@@ -69,7 +81,10 @@ const AudioOutUi: React.FC<NodeUiProps<AudioOutNode>> = ({ node }) => {
     };
 
     raf = window.requestAnimationFrame(draw);
-    return () => window.cancelAnimationFrame(raf);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      resizeObserver.disconnect();
+    };
   }, [node.id]);
 
   return (
@@ -99,7 +114,9 @@ export const audioOutGraph: NodeDefinition<AudioOutNode> = {
   type: "audioOut",
   title: "Output",
   defaultState,
-  ports: () => [{ id: "audio_in", name: "Audio", kind: "audio", direction: "in" }],
+  ports: () => [
+    { id: "audio_in", name: "Audio", kind: "audio", direction: "in" },
+  ],
   ui: AudioOutUi,
   normalizeState: (state) => {
     const s = (state ?? {}) as Partial<AudioOutNode["state"]>;

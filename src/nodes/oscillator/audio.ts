@@ -57,6 +57,9 @@ function createOscillatorRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeI
   // Track active notes for control surface display
   const activeNotes = new Set<number>();
 
+  // Stable runtime state - replace reference only when values change
+  let runtimeState: { activeNotes: number[] } = { activeNotes: [] };
+
   return {
     type: "oscillator",
     updateState: (state) => {
@@ -79,14 +82,14 @@ function createOscillatorRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeI
         const hz = midiToFreqHz(event.note, A4_HZ);
         osc.frequency.setValueAtTime(hz, now);
         activeNotes.add(event.note);
+        runtimeState = { activeNotes: Array.from(activeNotes) };
       }
       if (event.type === "noteOff") {
         activeNotes.delete(event.note);
+        runtimeState = { activeNotes: Array.from(activeNotes) };
       }
     },
-    getRuntimeState: () => ({
-      activeNotes: Array.from(activeNotes),
-    }),
+    getRuntimeState: () => runtimeState,
     onRemove: () => {
       meter.disconnect();
       output.disconnect();

@@ -19,11 +19,7 @@ import { getNodeDef } from "./nodeRegistry";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
 import { bezierPath } from "./coordinates";
 import { canConnect, portMetaForNode } from "./graphUtils";
-import {
-  useAudioLevels,
-  useDragInteraction,
-  useNodeWidths,
-} from "./hooks";
+import { useDragInteraction, useNodeWidths } from "./hooks";
 import {
   DragConnectionPreview,
   GraphConnectionPath,
@@ -65,7 +61,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     const { emitMidi } = useMidi();
 
     const { nodeWidths, registerNodeEl } = useNodeWidths();
-    const { runtimeState } = useAudioLevels(audioState);
 
     const handleMoveNode = useCallback(
       (nodeId: string, x: number, y: number) => {
@@ -345,7 +340,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                     audioState={audioState}
                     midiVisible={midiVisible}
                     Ui={Ui}
-                    runtimeState={runtimeState[node.id]}
                     rootRef={rootRef}
                     scrollRef={scrollRef}
                     onRegisterNodeEl={registerNodeEl}
