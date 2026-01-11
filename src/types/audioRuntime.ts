@@ -1,4 +1,4 @@
-import type { GraphNode, MidiEvent, NodeId } from "../graph/types";
+import type { GraphNode, MidiEvent, NodeId } from "@graph/types";
 
 export type AudioNodeInstance<TNode extends GraphNode = GraphNode> = {
   readonly type: TNode["type"];

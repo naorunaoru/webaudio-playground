@@ -1,4 +1,4 @@
-import { useTheme } from "../../context";
+import { useTheme } from "@ui/context";
 import styles from "./Menu.module.css";
 
 export function MenuSeparator() {

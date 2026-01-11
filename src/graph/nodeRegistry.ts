@@ -1,6 +1,6 @@
 import { portKindColor } from "./portColors";
-import type { NodeDefinition, NodeUiProps } from "../types/graphNodeDefinition";
-import { NODE_MODULES } from "../nodes";
+import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
+import { NODE_MODULES } from "@nodes";
 
 export type { NodeDefinition, NodeUiProps };
 export { portKindColor };

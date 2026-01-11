@@ -1,10 +1,10 @@
 import type { Plugin } from "vite";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import { transform } from "esbuild";
-import { readFile } from "node:fs/promises";
+import { build } from "esbuild";
 import path from "node:path";
 import wasm from "vite-plugin-wasm";
+import { aliases } from "./aliases";
 
 function computeBase(): string {
   if (process.env.VITE_BASE) return process.env.VITE_BASE;
@@ -52,19 +52,22 @@ function audioWorkletPlugin(): Plugin {
         return `export default ${JSON.stringify(`/${rel}`)};`;
       }
 
-      const source = await readFile(filePath, "utf8");
-      const out = await transform(source, {
-        loader: filePath.endsWith(".ts") ? "ts" : "js",
+      const result = await build({
+        entryPoints: [filePath],
+        bundle: true,
+        write: false,
         format: "esm",
         target: "es2022",
         platform: "browser",
       });
 
+      const out = result.outputFiles[0];
+
       const baseName = path.basename(filePath).replace(/\.[^.]+$/, "");
       const refId = this.emitFile({
         type: "asset",
         name: `${baseName}.js`,
-        source: out.code,
+        source: out.text,
       });
 
       return `export default import.meta.ROLLUP_FILE_URL_${refId};`;
@@ -75,6 +78,9 @@ function audioWorkletPlugin(): Plugin {
 export default defineConfig(() => ({
   base: computeBase(),
   plugins: [wasm(), audioWorkletPlugin(), react()],
+  resolve: {
+    alias: aliases,
+  },
   build: {
     target: "esnext",
   },

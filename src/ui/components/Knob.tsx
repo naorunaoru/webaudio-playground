@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
-import type { ContinuousControlProps, BaseControlProps } from "../types";
-import { useTheme } from "../context";
-import { useDragValue } from "../hooks";
+import type { ContinuousControlProps, BaseControlProps } from "@ui/types";
+import { useTheme } from "@ui/context";
+import { useDragValue } from "@ui/hooks";
 import { Label, type LabelPosition } from "./Label";
 import { Tooltip } from "./Tooltip";
 import { NumericInput } from "./NumericInput";

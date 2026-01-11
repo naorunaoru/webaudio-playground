@@ -1,12 +1,12 @@
-import type { GraphNode } from "../../graph/types";
+import type { GraphNode } from "@graph/types";
 import type {
   NodeDefinition,
   NodeUiProps,
-} from "../../types/graphNodeDefinition";
-import { RadioGroup } from "../../ui/components/RadioGroup";
-import { WaveformIcon } from "../../ui/icons";
-import type { OptionDef } from "../../ui/types";
-import type { WaveformType } from "../../ui/icons/WaveformIcon";
+} from "@/types/graphNodeDefinition";
+import { RadioGroup } from "@ui/components/RadioGroup";
+import { WaveformIcon } from "@ui/icons";
+import type { OptionDef } from "@ui/types";
+import type { WaveformType } from "@ui/icons/WaveformIcon";
 
 type OscillatorNode = Extract<GraphNode, { type: "oscillator" }>;
 

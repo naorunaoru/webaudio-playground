@@ -5,11 +5,11 @@ import type {
   MidiEvent,
   NodeId,
   PortSpec,
-} from "../types";
-import { portKindColor } from "../nodeRegistry";
-import { PORT_ROW_HEIGHT } from "../layout";
-import { localPointFromPointerEvent, viewToWorld } from "../coordinates";
-import styles from "../GraphEditor.module.css";
+} from "@graph/types";
+import { portKindColor } from "@graph/nodeRegistry";
+import { PORT_ROW_HEIGHT } from "@graph/layout";
+import { localPointFromPointerEvent, viewToWorld } from "@graph/coordinates";
+import styles from "@graph/GraphEditor.module.css";
 import { NodeMeter } from "./NodeMeter";
 
 export type GraphNodeCardProps = {

@@ -1,5 +1,5 @@
 import { useId, type ReactNode, type ButtonHTMLAttributes } from "react";
-import { useTheme } from "../context";
+import { useTheme } from "@ui/context";
 
 export interface ButtonProps
   extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children"> {

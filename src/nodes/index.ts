@@ -1,5 +1,5 @@
-import type { GraphNode } from "../graph/types";
-import type { NodeModule } from "../types/nodeModule";
+import type { GraphNode } from "@graph/types";
+import type { NodeModule } from "@/types/nodeModule";
 import { midiSourceNode } from "./midiSource";
 import { ccSourceNode } from "./ccSource";
 import { oscillatorNode } from "./oscillator";

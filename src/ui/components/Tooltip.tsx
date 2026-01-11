@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, type ReactNode } from "react";
-import { useTheme } from "../context";
+import { useTheme } from "@ui/context";
 
 export interface TooltipProps {
   content: string;

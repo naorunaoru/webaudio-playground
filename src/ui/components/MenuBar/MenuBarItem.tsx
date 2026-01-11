@@ -4,9 +4,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useTheme } from "../../context";
-import { useMenuBarContext } from "../Menu/MenuContext";
-import { Menu } from "../Menu/Menu";
+import { useTheme } from "@ui/context";
+import { useMenuBarContext } from "@ui/components/Menu/MenuContext";
+import { Menu } from "@ui/components/Menu/Menu";
 import styles from "./MenuBar.module.css";
 
 export interface MenuBarItemProps {

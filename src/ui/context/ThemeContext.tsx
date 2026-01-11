@@ -4,7 +4,7 @@ import {
   type ChromeColors,
   defaultTheme,
   chrome as defaultChrome,
-} from "../types/theme";
+} from "@ui/types/theme";
 
 interface ThemeContextValue {
   theme: ControlTheme;

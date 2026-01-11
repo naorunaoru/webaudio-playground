@@ -1,5 +1,5 @@
-import type { GraphNode } from "../../graph/types";
-import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
+import type { GraphNode } from "@graph/types";
+import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
 
 type CcSourceNode = Extract<GraphNode, { type: "ccSource" }>;
 

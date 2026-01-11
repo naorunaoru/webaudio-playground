@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { ConnectionEndpoint, DragState } from "../types";
-import { localPointFromClientPoint, viewToWorld } from "../coordinates";
+import type { ConnectionEndpoint, DragState } from "@graph/types";
+import { localPointFromClientPoint, viewToWorld } from "@graph/coordinates";
 
 type UseDragInteractionOptions = {
   rootRef: React.RefObject<HTMLElement | null>;

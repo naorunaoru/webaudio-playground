@@ -11,7 +11,24 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "strict": true,
-    "types": ["vite/client", "audioworklet"]
+    "types": ["vite/client", "audioworklet"],
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"],
+      "@audio/*": ["src/audio/*"],
+      "@contexts": ["src/contexts/index.ts"],
+      "@contexts/*": ["src/contexts/*"],
+      "@graph/*": ["src/graph/*"],
+      "@nodes": ["src/nodes/index.ts"],
+      "@nodes/*": ["src/nodes/*"],
+      "@project/*": ["src/project/*"],
+      "@state": ["src/state/index.ts"],
+      "@state/*": ["src/state/*"],
+      "@storage": ["src/storage/index.ts"],
+      "@storage/*": ["src/storage/*"],
+      "@ui/*": ["src/ui/*"],
+      "@utils/*": ["src/utils/*"]
+    }
   },
   "include": ["src"]
 }

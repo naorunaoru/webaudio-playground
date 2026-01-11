@@ -2,6 +2,7 @@ export type PortKind = "audio" | "midi" | "cc" | "automation";
 export type PortDirection = "in" | "out";
 
 // Augment this interface from `src/nodes/<node>/types.ts` to register new node types.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface NodeTypeMap {}
 
 export type NodeType = keyof NodeTypeMap & string;

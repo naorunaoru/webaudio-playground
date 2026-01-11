@@ -1,6 +1,6 @@
 import { useRef, useCallback } from "react";
-import type { SingleSelectProps, BaseControlProps } from "../types";
-import { useTheme } from "../context";
+import type { SingleSelectProps, BaseControlProps } from "@ui/types";
+import { useTheme } from "@ui/context";
 import { Label } from "./Label";
 
 export interface RadioGroupProps<T extends string | number = string>

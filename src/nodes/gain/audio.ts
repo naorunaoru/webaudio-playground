@@ -1,23 +1,10 @@
-import type { GraphNode, NodeId } from "../../graph/types";
-import type { AudioNodeFactory, AudioNodeInstance } from "../../types/audioRuntime";
-import type { AudioNodeServices } from "../../types/nodeModule";
+import type { GraphNode, NodeId } from "@graph/types";
+import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
+import type { AudioNodeServices } from "@/types/nodeModule";
+import { rmsFromAnalyser } from "@utils/audio";
+import { clamp } from "@utils/math";
 
 type GainGraphNode = Extract<GraphNode, { type: "gain" }>;
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return Math.max(min, Math.min(max, v));
-}
-
-function rmsFromAnalyser(analyser: AnalyserNode, buffer: Float32Array<ArrayBufferLike>): number {
-  analyser.getFloatTimeDomainData(buffer as any);
-  let sum = 0;
-  for (let i = 0; i < buffer.length; i++) {
-    const v = buffer[i] ?? 0;
-    sum += v * v;
-  }
-  return Math.sqrt(sum / buffer.length);
-}
 
 export type GainRuntimeState = {
   modulatedGain: number;

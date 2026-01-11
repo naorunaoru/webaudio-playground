@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { StoredSample } from "../../../audio/sampleStore";
+import type { StoredSample } from "@audio/sampleStore";
 import {
   deleteSample,
   getSampleBlob,
   listSamples,
   putSampleFromFile,
-} from "../../../audio/sampleStore";
-import { FloatingPanel } from "../FloatingPanel/FloatingPanel";
+} from "@audio/sampleStore";
+import { FloatingPanel } from "@ui/components/FloatingPanel/FloatingPanel";
 import styles from "./SampleLibraryPanel.module.css";
 
 export interface SampleLibraryPanelProps {

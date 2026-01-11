@@ -1,6 +1,7 @@
-import type { GraphNode } from "../../graph/types";
-import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
-import { Knob, RadioGroup } from "../../ui/components";
+import type { GraphNode } from "@graph/types";
+import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
+import { Knob, RadioGroup } from "@ui/components";
+import { clamp } from "@utils/math";
 
 type LimiterNode = Extract<GraphNode, { type: "limiter" }>;
 
@@ -14,11 +15,6 @@ function defaultState(): LimiterNode["state"] {
     channelCount: 2,
     lookaheadMs: 0,
   };
-}
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return Math.max(min, Math.min(max, v));
 }
 
 const LimiterUi: React.FC<NodeUiProps<LimiterNode>> = ({ node, onPatchNode }) => {

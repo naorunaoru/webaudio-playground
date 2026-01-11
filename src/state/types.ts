@@ -3,7 +3,7 @@ import type {
   ConnectionId,
   PortKind,
   ConnectionEndpoint,
-} from "../graph/types";
+} from "@graph/types";
 
 /**
  * Automerge-optimized document structure.

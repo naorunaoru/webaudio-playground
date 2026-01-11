@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { useTheme } from "../../context";
+import { useTheme } from "@ui/context";
 import { useMenuContext, MenuContext, type MenuContextValue } from "./MenuContext";
 import styles from "./Menu.module.css";
 

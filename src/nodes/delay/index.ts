@@ -1,6 +1,6 @@
 import "./types";
-import type { GraphNode } from "../../graph/types";
-import type { NodeModule } from "../../types/nodeModule";
+import type { GraphNode } from "@graph/types";
+import type { NodeModule } from "@/types/nodeModule";
 import { delayGraph } from "./graph";
 import { delayAudioFactory } from "./audio";
 

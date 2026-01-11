@@ -1,11 +1,12 @@
-import type { GraphNode } from "../../graph/types";
+import type { GraphNode } from "@graph/types";
 import type {
   NodeDefinition,
   NodeUiProps,
-} from "../../types/graphNodeDefinition";
-import { Knob } from "../../ui/components/Knob";
-import { ThemeProvider } from "../../ui/context";
-import type { ControlTheme } from "../../ui/types/theme";
+} from "@/types/graphNodeDefinition";
+import { Knob } from "@ui/components/Knob";
+import { ThemeProvider } from "@ui/context";
+import type { ControlTheme } from "@ui/types/theme";
+import { clamp } from "@utils/math";
 
 const reverbTheme: ControlTheme = {
   primary: "#14b8a6",
@@ -23,11 +24,6 @@ function defaultState(): ReverbNode["state"] {
     mix: 0.35,
     reverse: false,
   };
-}
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return Math.max(min, Math.min(max, v));
 }
 
 const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode, startBatch, endBatch }) => {

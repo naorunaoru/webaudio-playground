@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Knob } from "../components/Knob";
-import { NumericInput } from "../components/NumericInput";
-import { RadioGroup } from "../components/RadioGroup";
-import { WithContextMenu } from "../components/WithContextMenu";
+import { Knob } from "@ui/components/Knob";
+import { NumericInput } from "@ui/components/NumericInput";
+import { RadioGroup } from "@ui/components/RadioGroup";
+import { WithContextMenu } from "@ui/components/WithContextMenu";
 import {
   Menu,
   MenuItem,
@@ -10,12 +10,12 @@ import {
   MenuSeparator,
   SubMenu,
   useContextMenu,
-} from "../components/Menu";
-import { MenuBar, MenuBarItem } from "../components/MenuBar";
-import { ThemeProvider } from "../context";
-import { WaveformIcon } from "../icons";
-import { defaultTheme } from "../types";
-import type { ControlTheme, OptionDef } from "../types";
+} from "@ui/components/Menu";
+import { MenuBar, MenuBarItem } from "@ui/components/MenuBar";
+import { ThemeProvider } from "@ui/context";
+import { WaveformIcon } from "@ui/icons";
+import { defaultTheme } from "@ui/types";
+import type { ControlTheme, OptionDef } from "@ui/types";
 
 // Different themes to showcase
 const themes: Record<string, ControlTheme> = {

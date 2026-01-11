@@ -4,7 +4,7 @@ import type {
   GraphConnection,
   NodeId,
   ConnectionId,
-} from "../graph/types";
+} from "@graph/types";
 import type { GraphDoc, DocNode, DocConnection } from "./types";
 
 /**

@@ -1,6 +1,6 @@
-import type { GraphNode, NodeId } from "../../graph/types";
-import type { AudioNodeFactory, AudioNodeInstance } from "../../types/audioRuntime";
-import type { AudioNodeServices } from "../../types/nodeModule";
+import type { GraphNode, NodeId } from "@graph/types";
+import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
+import type { AudioNodeServices } from "@/types/nodeModule";
 
 type AudioOutGraphNode = Extract<GraphNode, { type: "audioOut" }>;
 

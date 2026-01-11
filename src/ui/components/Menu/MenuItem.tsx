@@ -1,5 +1,5 @@
 import { useEffect, useId, useCallback, type ReactNode } from "react";
-import { useTheme } from "../../context";
+import { useTheme } from "@ui/context";
 import { useMenuContext } from "./MenuContext";
 import styles from "./Menu.module.css";
 

@@ -1,15 +1,19 @@
-import type { GraphNode, MidiEvent, NodeId } from "../../graph/types";
+import type { GraphNode, MidiEvent, NodeId } from "@graph/types";
 import type {
   AudioNodeFactory,
   AudioNodeInstance,
-} from "../../types/audioRuntime";
-import type { AudioNodeServices } from "../../types/nodeModule";
-import { clamp01, shapedT } from "./curve";
+} from "@/types/audioRuntime";
+import type { AudioNodeServices } from "@/types/nodeModule";
+import {
+  shapedT,
+  getPhaseAtTime,
+  type EnvelopePhase,
+  type EnvelopeTiming,
+} from "@utils/envelope";
+import { clamp01 } from "@utils/math";
 
 type EnvelopeGraphNode = Extract<GraphNode, { type: "envelope" }>;
 type EnvelopeNodeState = EnvelopeGraphNode["state"];
-
-export type EnvelopePhase = "idle" | "attack" | "decay" | "sustain" | "release";
 
 export type EnvelopeRuntimeState = {
   currentLevel: number;
@@ -174,87 +178,45 @@ function createEnvelopeRuntime(
 
     // Idle state
     if (noteOnAtSec == null && releaseStartAtSec == null) {
-      return {
-        currentLevel: 0,
-        phase: "idle",
-        phaseProgress: 0,
-        activeNotes: notesArr,
-      };
+      return { currentLevel: 0, phase: "idle", phaseProgress: 0, activeNotes: notesArr };
     }
+
+    const env = cachedEnv;
+    const timing: EnvelopeTiming = {
+      attackSec: Math.max(0, env?.attackMs ?? 0) / 1000,
+      decaySec: Math.max(0, env?.decayMs ?? 0) / 1000,
+      releaseSec: releaseDurationSec,
+    };
 
     // Release phase
     if (releaseStartAtSec != null) {
       const elapsed = now - releaseStartAtSec;
-      if (releaseDurationSec <= 0 || elapsed >= releaseDurationSec) {
-        // Release finished
+      const { phase, progress } = getPhaseAtTime(elapsed, timing, true);
+
+      if (phase === "idle") {
         releaseStartAtSec = null;
-        return {
-          currentLevel: 0,
-          phase: "idle",
-          phaseProgress: 0,
-          activeNotes: notesArr,
-        };
+        return { currentLevel: 0, phase: "idle", phaseProgress: 0, activeNotes: notesArr };
       }
-      const progress = elapsed / releaseDurationSec;
-      const env = cachedEnv;
+
       const level = env
         ? releaseStartLevel * (1 - shapedT(progress, env.releaseShape))
         : releaseStartLevel * (1 - progress);
-      return {
-        currentLevel: Math.max(0, level),
-        phase: "release",
-        phaseProgress: clamp01(progress),
-        activeNotes: notesArr,
-      };
+
+      return { currentLevel: Math.max(0, level), phase, phaseProgress: progress, activeNotes: notesArr };
     }
 
     // Attack/Decay/Sustain phases
-    if (noteOnAtSec != null && cachedEnv) {
+    if (noteOnAtSec != null && env) {
       const elapsed = now - noteOnAtSec;
-      const env = cachedEnv;
-      const a = Math.max(0, env.attackMs) / 1000;
-      const d = Math.max(0, env.decayMs) / 1000;
+      const { phase, progress } = getPhaseAtTime(elapsed, timing, false);
 
-      // Attack phase
-      if (elapsed < a) {
-        const progress = a > 0 ? elapsed / a : 1;
-        const level = levelAtElapsedSec(elapsed, env);
-        return {
-          currentLevel: Math.max(0, level),
-          phase: "attack",
-          phaseProgress: clamp01(progress),
-          activeNotes: notesArr,
-        };
-      }
+      const level = phase === "sustain" ? noteOnSustainLevel : levelAtElapsedSec(elapsed, env);
 
-      // Decay phase
-      if (elapsed < a + d) {
-        const progress = d > 0 ? (elapsed - a) / d : 1;
-        const level = levelAtElapsedSec(elapsed, env);
-        return {
-          currentLevel: Math.max(0, level),
-          phase: "decay",
-          phaseProgress: clamp01(progress),
-          activeNotes: notesArr,
-        };
-      }
-
-      // Sustain phase
-      return {
-        currentLevel: Math.max(0, noteOnSustainLevel),
-        phase: "sustain",
-        phaseProgress: 1,
-        activeNotes: notesArr,
-      };
+      return { currentLevel: Math.max(0, level), phase, phaseProgress: progress, activeNotes: notesArr };
     }
 
     // Fallback
-    return {
-      currentLevel: 0,
-      phase: "idle",
-      phaseProgress: 0,
-      activeNotes: notesArr,
-    };
+    return { currentLevel: 0, phase: "idle", phaseProgress: 0, activeNotes: notesArr };
   }
 
   return {

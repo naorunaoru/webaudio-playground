@@ -1,7 +1,7 @@
 import { useCallback, useRef } from "react";
-import type { GraphState, MidiEvent, NodeId } from "../types";
-import { getAudioEngine } from "../../audio/engine";
-import { computeMidiPatches } from "../midiRouting";
+import type { GraphState, MidiEvent, NodeId } from "@graph/types";
+import { getAudioEngine } from "@audio/engine";
+import { computeMidiPatches } from "@graph/midiRouting";
 
 type MidiQueueItem = {
   graph: GraphState;

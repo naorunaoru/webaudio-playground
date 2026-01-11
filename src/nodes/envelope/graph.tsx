@@ -1,15 +1,15 @@
-import type { GraphNode } from "../../graph/types";
-import { useRuntimeStateGetter } from "../../graph/hooks";
+import type { GraphNode } from "@graph/types";
+import { useRuntimeStateGetter } from "@graph/hooks";
 import type {
   NodeDefinition,
   NodeUiProps,
-} from "../../types/graphNodeDefinition";
-import { Button } from "../../ui/components/Button";
-import { EnvelopeEditor } from "../../ui/components/EnvelopeEditor";
-import { Label } from "../../ui/components/Label";
-import { NumericInput } from "../../ui/components/NumericInput";
-import { ThemeProvider } from "../../ui/context";
-import type { ControlTheme } from "../../ui/types/theme";
+} from "@/types/graphNodeDefinition";
+import { Button } from "@ui/components/Button";
+import { EnvelopeEditor } from "@ui/components/EnvelopeEditor";
+import { Label } from "@ui/components/Label";
+import { NumericInput } from "@ui/components/NumericInput";
+import { ThemeProvider } from "@ui/context";
+import type { ControlTheme } from "@ui/types/theme";
 import type { EnvelopeRuntimeState } from "./audio";
 
 const envelopeTheme: ControlTheme = {

@@ -1,8 +1,8 @@
-import type { DragState, GraphNode, GraphState, PortKind } from "../types";
-import { portKindColor } from "../nodeRegistry";
-import { bezierPath } from "../coordinates";
-import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT } from "../layout";
-import { findNode, portById, portColumnIndex, portMetaForNode } from "../graphUtils";
+import type { DragState, GraphNode, GraphState, PortKind } from "@graph/types";
+import { portKindColor } from "@graph/nodeRegistry";
+import { bezierPath } from "@graph/coordinates";
+import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT } from "@graph/layout";
+import { findNode, portById, portColumnIndex, portMetaForNode } from "@graph/graphUtils";
 
 export type DragConnectionPreviewProps = {
   drag: DragState;

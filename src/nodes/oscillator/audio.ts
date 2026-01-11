@@ -1,26 +1,14 @@
-import type { AudioGraphContext } from "../../audio/context";
-import { midiToFreqHz } from "../../audio/context";
-import type { GraphNode, MidiEvent, NodeId } from "../../graph/types";
+import type { AudioGraphContext } from "@audio/context";
+import { midiToFreqHz } from "@audio/context";
+import type { GraphNode, MidiEvent, NodeId } from "@graph/types";
 import type {
   AudioNodeFactory,
   AudioNodeInstance,
-} from "../../types/audioRuntime";
-import type { AudioNodeServices } from "../../types/nodeModule";
+} from "@/types/audioRuntime";
+import type { AudioNodeServices } from "@/types/nodeModule";
+import { rmsFromAnalyser } from "@utils/audio";
 
 type OscillatorGraphNode = Extract<GraphNode, { type: "oscillator" }>;
-
-function rmsFromAnalyser(
-  analyser: AnalyserNode,
-  buffer: Float32Array<ArrayBufferLike>
-): number {
-  analyser.getFloatTimeDomainData(buffer as any);
-  let sum = 0;
-  for (let i = 0; i < buffer.length; i++) {
-    const v = buffer[i] ?? 0;
-    sum += v * v;
-  }
-  return Math.sqrt(sum / buffer.length);
-}
 
 function createOscillatorRuntime(
   ctx: AudioContext,

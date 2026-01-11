@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { NodeId } from "../types";
+import type { NodeId } from "@graph/types";
 
 export function useNodeWidths() {
   const nodeElsRef = useRef(new Map<NodeId, HTMLElement>());

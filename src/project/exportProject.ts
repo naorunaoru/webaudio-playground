@@ -1,6 +1,6 @@
 import JSZip from "jszip";
-import type { GraphState } from "../graph/types";
-import { getSample, type StoredSample } from "../audio/sampleStore";
+import type { GraphState } from "@graph/types";
+import { getSample, type StoredSample } from "@audio/sampleStore";
 import { CURRENT_FORMAT_VERSION, type ProjectMeta } from "./schemas";
 
 type SampleRef = {

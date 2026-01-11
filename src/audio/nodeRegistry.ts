@@ -1,7 +1,7 @@
-import type { GraphNode } from "../graph/types";
-import { NODE_MODULES } from "../nodes";
-import type { AudioNodeFactory } from "../types/audioRuntime";
-import type { AudioNodeServices } from "../types/nodeModule";
+import type { GraphNode } from "@graph/types";
+import { NODE_MODULES } from "@nodes";
+import type { AudioNodeFactory } from "@/types/audioRuntime";
+import type { AudioNodeServices } from "@/types/nodeModule";
 
 export type AudioNodeFactoryMap = Partial<Record<GraphNode["type"], AudioNodeFactory<any>>>;
 

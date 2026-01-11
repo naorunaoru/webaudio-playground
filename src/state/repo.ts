@@ -1,8 +1,8 @@
 import { Repo, type DocHandle, type DocumentId } from "@automerge/automerge-repo";
 import type { GraphDoc } from "./types";
 import { graphStateToDoc } from "./converters";
-import { initialGraph } from "../graph/initialGraph";
-import { DocumentStorageAdapter, openDb } from "../storage";
+import { initialGraph } from "@graph/initialGraph";
+import { DocumentStorageAdapter, openDb } from "@storage";
 
 const CURRENT_DOC_KEY = "webaudio-playground:current-doc-id";
 

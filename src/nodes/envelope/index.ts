@@ -1,6 +1,6 @@
 import "./types";
-import type { GraphNode } from "../../graph/types";
-import type { NodeModule } from "../../types/nodeModule";
+import type { GraphNode } from "@graph/types";
+import type { NodeModule } from "@/types/nodeModule";
 import { envelopeGraph } from "./graph";
 import { envelopeAudioFactory } from "./audio";
 
@@ -11,4 +11,3 @@ export const envelopeNode: NodeModule<EnvelopeNode> = {
   graph: envelopeGraph,
   audioFactory: envelopeAudioFactory,
 };
-

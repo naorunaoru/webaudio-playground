@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { useRuntimeStateGetter } from "../../graph/hooks/useNodeRuntimeState";
-import type { GraphNode } from "../../graph/types";
-import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
-import { Knob, RadioGroup } from "../../ui/components";
-import { ThemeProvider } from "../../ui/context";
-import { FilterTypeIcon } from "../../ui/icons";
-import type { ControlTheme, OptionDef } from "../../ui/types";
+import { useRuntimeStateGetter } from "@graph/hooks/useNodeRuntimeState";
+import type { GraphNode } from "@graph/types";
+import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
+import { Knob, RadioGroup } from "@ui/components";
+import { ThemeProvider } from "@ui/context";
+import { FilterTypeIcon } from "@ui/icons";
+import type { ControlTheme, OptionDef } from "@ui/types";
+import { clamp, clampPositive } from "@utils/math";
 import type { FilterRuntimeState } from "./audio";
 import type { FilterType } from "./types";
 
@@ -16,16 +17,6 @@ const filterTheme: ControlTheme = {
   secondary: "#93c5fd",
   tertiary: "#3b82f6",
 };
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return Math.max(min, Math.min(max, v));
-}
-
-function clampPositive(v: number, fallback: number): number {
-  if (!Number.isFinite(v) || v <= 0) return fallback;
-  return v;
-}
 
 function defaultState(): FilterNodeGraph["state"] {
   return {

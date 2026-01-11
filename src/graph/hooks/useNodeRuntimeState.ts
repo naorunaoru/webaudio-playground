@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { getAudioEngine } from "../../audio/engine";
+import { getAudioEngine } from "@audio/engine";
 
 /**
  * Hook that returns a stable getter function for reading a node's runtime state on-demand.

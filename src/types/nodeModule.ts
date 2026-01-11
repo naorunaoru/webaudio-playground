@@ -1,5 +1,5 @@
-import type { AudioGraphContext } from "../audio/context";
-import type { GraphNode } from "../graph/types";
+import type { AudioGraphContext } from "@audio/context";
+import type { GraphNode } from "@graph/types";
 import type { AudioNodeFactory } from "./audioRuntime";
 import type { NodeDefinition } from "./graphNodeDefinition";
 

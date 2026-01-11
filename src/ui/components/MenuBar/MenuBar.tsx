@@ -1,6 +1,6 @@
 import { useState, useMemo, type ReactNode, type CSSProperties } from "react";
-import { MenuBarContext, type MenuBarContextValue } from "../Menu/MenuContext";
-import type { MenuOffset } from "../Menu/Menu";
+import { MenuBarContext, type MenuBarContextValue } from "@ui/components/Menu/MenuContext";
+import type { MenuOffset } from "@ui/components/Menu/Menu";
 import styles from "./MenuBar.module.css";
 
 export interface MenuBarProps {

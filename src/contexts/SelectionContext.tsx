@@ -5,7 +5,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import type { Selected, NodeId, ConnectionId } from "../graph/types";
+import type { Selected, NodeId, ConnectionId } from "@graph/types";
 
 type SelectionContextValue = {
   selected: Selected;

@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
-import type { GraphNode } from "../../graph/types";
+import type { GraphNode } from "@graph/types";
 import type {
   NodeDefinition,
   NodeUiProps,
-} from "../../types/graphNodeDefinition";
-import { Button, NumericInput } from "../../ui/components";
-import { ThemeProvider } from "../../ui/context";
-import type { ControlTheme } from "../../ui/types/theme";
+} from "@/types/graphNodeDefinition";
+import { Button, NumericInput } from "@ui/components";
+import { ThemeProvider } from "@ui/context";
+import type { ControlTheme } from "@ui/types/theme";
 
 const midiTheme: ControlTheme = {
   primary: "#a855f7", // Purple - MIDI/music

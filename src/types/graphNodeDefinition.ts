@@ -1,5 +1,5 @@
 import type React from "react";
-import type { GraphNode, MidiEvent, NodeId, PortSpec } from "../graph/types";
+import type { GraphNode, MidiEvent, NodeId, PortSpec } from "@graph/types";
 
 export type NodeUiProps<TNode extends GraphNode> = Readonly<{
   node: TNode;

@@ -4,16 +4,13 @@ import type {
   GraphState,
   MidiEvent,
   NodeId,
-} from "../graph/types";
+} from "@graph/types";
 import {
   createBuiltInAudioNodeFactories,
   listBuiltInAudioWorkletModules,
 } from "./nodeRegistry";
 import type { AudioNodeFactoryMap } from "./nodeRegistry";
-import type {
-  AudioNodeFactory,
-  AudioNodeInstance,
-} from "../types/audioRuntime";
+import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
 import {
   AudioGraphContextImpl,
   DEFAULT_CONTEXT_VALUES,
@@ -21,6 +18,7 @@ import {
   type AudioGraphEvent,
   type PersistedContextValues,
 } from "./context";
+import { rmsFromAnalyser } from "@utils/audio";
 
 export type EngineStatus = {
   state: AudioContextState;
@@ -443,21 +441,7 @@ export class AudioEngine {
   }
 }
 
-function rmsFromAnalyser(
-  analyser: AnalyserNode,
-  buffer: Float32Array<ArrayBufferLike>
-): number {
-  analyser.getFloatTimeDomainData(buffer as any);
-  let sum = 0;
-  for (let i = 0; i < buffer.length; i++) {
-    const v = buffer[i] ?? 0;
-    sum += v * v;
-  }
-  return Math.sqrt(sum / buffer.length);
-}
-
 declare global {
-  // eslint-disable-next-line no-var
   var __webaudioPlaygroundEngine: AudioEngine | undefined;
 }
 

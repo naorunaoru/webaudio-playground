@@ -1,4 +1,4 @@
-import { useTheme } from "../context";
+import { useTheme } from "@ui/context";
 
 export type LabelPosition = "bottom" | "left" | "right";
 

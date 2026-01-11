@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shapedT, invTFromU } from "./curve";
+import { shapedT, invTFromU } from "./envelope";
 
 describe("shapedT and invTFromU", () => {
   const shapes = [-1, -0.6, -0.3, 0, 0.3, 0.6, 1];

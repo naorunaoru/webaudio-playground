@@ -1,3 +1,5 @@
+import { clamp } from "@utils/math";
+
 type LimiterParams = Readonly<{
   ceilingDb: number;
   releaseMs: number;
@@ -28,11 +30,6 @@ type WasmExports = {
   wasm_alloc: (bytes: number) => number;
   wasm_free: (ptr: number, bytes: number) => void;
 };
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return Math.max(min, Math.min(max, v));
-}
 
 function nowMs(): number {
   const p = (globalThis as any).performance;

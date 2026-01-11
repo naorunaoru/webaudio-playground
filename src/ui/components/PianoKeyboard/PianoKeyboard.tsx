@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { NodeId } from "../../../graph/types";
-import { useSelection, useMidi, useMidiActiveNotes } from "../../../contexts";
+import type { NodeId } from "@graph/types";
+import { useSelection, useMidi, useMidiActiveNotes } from "@contexts";
 import styles from "./PianoKeyboard.module.css";
 
 // MIDI note numbers for one octave (C = 0 relative to octave start)

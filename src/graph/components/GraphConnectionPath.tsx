@@ -1,5 +1,5 @@
-import type { GraphConnection, PortKind } from "../types";
-import { portKindColor } from "../nodeRegistry";
+import type { GraphConnection, PortKind } from "@graph/types";
+import { portKindColor } from "@graph/nodeRegistry";
 
 export type GraphConnectionPathProps = {
   connection: GraphConnection;

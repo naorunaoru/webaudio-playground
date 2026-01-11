@@ -10,7 +10,7 @@ import {
 import { type DocHandle } from "@automerge/automerge-repo";
 import * as Automerge from "@automerge/automerge";
 import type { GraphDoc, DocConnection, DocUiState } from "./types";
-import type { GraphState, NodeId, ConnectionId, GraphNode } from "../graph/types";
+import type { GraphState, NodeId, ConnectionId, GraphNode } from "@graph/types";
 import { docToGraphState, graphStateToDoc } from "./converters";
 import {
   getRepo,
@@ -19,7 +19,7 @@ import {
   createDocumentFromImport,
   waitForStorageReady,
 } from "./repo";
-import { getAudioEngine } from "../audio/engine";
+import { getAudioEngine } from "@audio/engine";
 
 type HistoryEntry = {
   binary: Uint8Array;

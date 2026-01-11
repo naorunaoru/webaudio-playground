@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { getAudioEngine } from "../../audio/engine";
-import type { NodeId } from "../types";
+import { getAudioEngine } from "@audio/engine";
+import type { NodeId } from "@graph/types";
 
 export type NodeMeterProps = {
   nodeId: NodeId;

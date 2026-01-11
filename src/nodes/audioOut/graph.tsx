@@ -1,10 +1,10 @@
 import { useEffect, useRef } from "react";
-import { getAudioEngine } from "../../audio/engine";
-import type { GraphNode } from "../../graph/types";
+import { getAudioEngine } from "@audio/engine";
+import type { GraphNode } from "@graph/types";
 import type {
   NodeDefinition,
   NodeUiProps,
-} from "../../types/graphNodeDefinition";
+} from "@/types/graphNodeDefinition";
 
 type AudioOutNode = Extract<GraphNode, { type: "audioOut" }>;
 

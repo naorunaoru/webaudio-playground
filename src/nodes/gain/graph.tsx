@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { useRuntimeStateGetter } from "../../graph/hooks/useNodeRuntimeState";
-import type { GraphNode } from "../../graph/types";
+import { useRuntimeStateGetter } from "@graph/hooks/useNodeRuntimeState";
+import type { GraphNode } from "@graph/types";
 import type { GainRuntimeState } from "./audio";
-import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
-import { Knob } from "../../ui/components/Knob";
-import { ThemeProvider } from "../../ui/context";
-import type { ControlTheme } from "../../ui/types/theme";
+import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
+import { Knob } from "@ui/components/Knob";
+import { ThemeProvider } from "@ui/context";
+import type { ControlTheme } from "@ui/types/theme";
+import { clamp } from "@utils/math";
 
 const gainTheme: ControlTheme = {
   primary: "#22c55e", // Green - level/volume
@@ -14,11 +15,6 @@ const gainTheme: ControlTheme = {
 };
 
 type GainNodeGraph = Extract<GraphNode, { type: "gain" }>;
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return Math.max(min, Math.min(max, v));
-}
 
 function defaultState(): GainNodeGraph["state"] {
   return { depth: 1 };

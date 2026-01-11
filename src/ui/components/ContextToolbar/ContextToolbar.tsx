@@ -1,7 +1,7 @@
-import { DEFAULT_CONTEXT_VALUES } from "../../../audio/context";
-import { useGraphDoc } from "../../../state";
-import { Button } from "../Button";
-import { NumericInput } from "../NumericInput";
+import { DEFAULT_CONTEXT_VALUES } from "@audio/context";
+import { useGraphDoc } from "@state";
+import { Button } from "@ui/components/Button";
+import { NumericInput } from "@ui/components/NumericInput";
 import styles from "./ContextToolbar.module.css";
 
 export function ContextToolbar() {

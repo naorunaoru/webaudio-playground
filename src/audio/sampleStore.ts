@@ -1,5 +1,5 @@
-import { openDb, STORE_SAMPLES, requestToPromise, transactionDone } from "../storage/db";
-import { writeFile, readFile, deleteFile } from "../storage/opfs";
+import { openDb, STORE_SAMPLES, requestToPromise, transactionDone } from "@storage/db";
+import { writeFile, readFile, deleteFile } from "@storage/opfs";
 
 export type StoredSample = Readonly<{
   id: string;

@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import type { GraphNode } from "../../graph/types";
-import { useRuntimeStateGetter } from "../../graph/hooks";
+import type { GraphNode } from "@graph/types";
+import { useRuntimeStateGetter } from "@graph/hooks";
 import type {
   NodeDefinition,
   NodeUiProps,
-} from "../../types/graphNodeDefinition";
-import { Button, Knob, NumericInput, RadioGroup } from "../../ui/components";
-import { SampleLibraryPanel } from "../../ui/components/SampleLibraryPanel";
-import { ThemeProvider } from "../../ui/context";
-import type { ControlTheme, OptionDef } from "../../ui/types";
+} from "@/types/graphNodeDefinition";
+import { Button, Knob, NumericInput, RadioGroup } from "@ui/components";
+import { SampleLibraryPanel } from "@ui/components/SampleLibraryPanel";
+import { ThemeProvider } from "@ui/context";
+import type { ControlTheme, OptionDef } from "@ui/types";
+import { clamp } from "@utils/math";
 
 type SamplePlayerRuntimeState = {
   sampleId: string | null;
@@ -39,11 +40,6 @@ function defaultState(): SamplePlayerNode["state"] {
     stopOnNoteOff: false,
     loop: false,
   };
-}
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return Math.max(min, Math.min(max, v));
 }
 
 const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({

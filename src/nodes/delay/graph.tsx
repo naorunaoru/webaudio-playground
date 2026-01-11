@@ -1,8 +1,9 @@
-import type { GraphNode } from "../../graph/types";
-import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
-import { Knob } from "../../ui/components/Knob";
-import { ThemeProvider } from "../../ui/context";
-import type { ControlTheme } from "../../ui/types/theme";
+import type { GraphNode } from "@graph/types";
+import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
+import { Knob } from "@ui/components/Knob";
+import { ThemeProvider } from "@ui/context";
+import type { ControlTheme } from "@ui/types/theme";
+import { clamp } from "@utils/math";
 
 const delayTheme: ControlTheme = {
   primary: "#f59e0b", // Amber - warm echo
@@ -14,11 +15,6 @@ type DelayNode = Extract<GraphNode, { type: "delay" }>;
 
 function defaultState(): DelayNode["state"] {
   return { delayMs: 240, feedback: 0.35, mix: 0.5 };
-}
-
-function clamp(v: number, min: number, max: number): number {
-  if (!Number.isFinite(v)) return min;
-  return Math.max(min, Math.min(max, v));
 }
 
 const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode, connectedPorts, startBatch, endBatch }) => {

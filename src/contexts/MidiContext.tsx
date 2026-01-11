@@ -7,10 +7,10 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { GraphState, MidiEvent, NodeId } from "../graph/types";
-import { getAudioEngine, type MidiDispatchEvent } from "../audio/engine";
-import { computeMidiPatches } from "../graph/midiRouting";
-import { NODE_MODULES } from "../nodes";
+import type { GraphState, MidiEvent, NodeId } from "@graph/types";
+import { getAudioEngine, type MidiDispatchEvent } from "@audio/engine";
+import { computeMidiPatches } from "@graph/midiRouting";
+import { NODE_MODULES } from "@nodes";
 
 type MidiQueueItem = {
   graph: GraphState;

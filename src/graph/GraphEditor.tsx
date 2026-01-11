@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import styles from "./GraphEditor.module.css";
-import { getAudioEngine } from "../audio/engine";
+import { getAudioEngine } from "@audio/engine";
 import type {
   ConnectionEndpoint,
   GraphConnection,
@@ -27,8 +27,8 @@ import {
   GraphNodeCard,
 } from "./components";
 import { createId } from "./id";
-import { useGraphDoc } from "../state";
-import { useSelection, useMidi } from "../contexts";
+import { useGraphDoc } from "@state";
+import { useSelection, useMidi } from "@contexts";
 
 export type GraphEditorProps = Readonly<{
   audioState: AudioContextState | "off";
