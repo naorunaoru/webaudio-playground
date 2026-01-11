@@ -11,6 +11,8 @@ export type AudioNodeInstance<TNode extends GraphNode = GraphNode> = {
   getWaveform?: (length: number) => Float32Array | null;
   /** Runtime-only data for UI/telemetry; not persisted into the graph document. */
   getRuntimeState?: () => unknown;
+  /** Called when connections to this node's ports change. */
+  onConnectionsChanged?: (connected: { inputs: Set<string>; outputs: Set<string> }) => void;
 };
 
 export type AudioNodeFactory<TNode extends GraphNode = GraphNode> = Readonly<{

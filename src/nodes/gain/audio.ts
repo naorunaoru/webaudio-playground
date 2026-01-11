@@ -33,6 +33,14 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
   cv.gain.value = 1;
   cv.connect(vca.gain);
 
+  // Provide a constant 1.0 signal so that when no automation is connected,
+  // the gain equals depth. When automation is connected, disconnect this.
+  const constantOne = ctx.createConstantSource();
+  constantOne.offset.value = 1;
+  constantOne.connect(cv);
+  constantOne.start();
+  let constantConnected = true;
+
   // Measure the CV signal going to vca.gain
   // We tap cv's output which carries: (envelope_input * depth)
   const cvMeter = ctx.createAnalyser();
@@ -70,12 +78,26 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
       input.disconnect();
       cvMeter.disconnect();
       try {
+        constantOne.stop();
+        constantOne.disconnect();
         cv.disconnect();
       } catch {
         // ignore
       }
     },
     getLevel: () => rmsFromAnalyser(meter, meterBuffer),
+    onConnectionsChanged: ({ inputs }) => {
+      const hasGainIn = inputs.has("gain_in");
+      if (hasGainIn && constantConnected) {
+        // Automation connected, disconnect the constant source
+        constantOne.disconnect(cv);
+        constantConnected = false;
+      } else if (!hasGainIn && !constantConnected) {
+        // Automation disconnected, reconnect the constant source
+        constantOne.connect(cv);
+        constantConnected = true;
+      }
+    },
     getRuntimeState: (): GainRuntimeState => {
       // Read the average value from the CV meter (envelope * depth)
       cvMeter.getFloatTimeDomainData(cvMeterBuffer as any);

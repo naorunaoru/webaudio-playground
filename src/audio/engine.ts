@@ -38,6 +38,8 @@ export class AudioEngine {
   private midiListeners = new Set<MidiDispatchListener>();
   /** Tracks active audio/automation connections for incremental sync */
   private activeConnections = new Map<string, GraphConnection>();
+  /** Tracks which ports are connected for each node */
+  private connectedPorts = new Map<NodeId, { inputs: Set<string>; outputs: Set<string> }>();
 
   onMidiDispatch(listener: MidiDispatchListener): () => void {
     this.midiListeners.add(listener);
@@ -233,6 +235,45 @@ export class AudioEngine {
         this.activeConnections.set(key, conn);
       }
     }
+
+    // Build current port connections per node and notify if changed
+    const newConnectedPorts = new Map<NodeId, { inputs: Set<string>; outputs: Set<string> }>();
+    const getOrCreate = (nodeId: NodeId) => {
+      let entry = newConnectedPorts.get(nodeId);
+      if (!entry) {
+        entry = { inputs: new Set(), outputs: new Set() };
+        newConnectedPorts.set(nodeId, entry);
+      }
+      return entry;
+    };
+    for (const conn of desiredConnections.values()) {
+      getOrCreate(conn.to.nodeId).inputs.add(conn.to.portId);
+      getOrCreate(conn.from.nodeId).outputs.add(conn.from.portId);
+    }
+
+    // Notify nodes whose connections have changed
+    const setsEqual = (a: Set<string>, b: Set<string>) => {
+      if (a.size !== b.size) return false;
+      for (const p of a) {
+        if (!b.has(p)) return false;
+      }
+      return true;
+    };
+    const emptySet = new Set<string>();
+    for (const nodeId of alive) {
+      const oldEntry = this.connectedPorts.get(nodeId);
+      const newEntry = newConnectedPorts.get(nodeId);
+      const oldInputs = oldEntry?.inputs ?? emptySet;
+      const oldOutputs = oldEntry?.outputs ?? emptySet;
+      const newInputs = newEntry?.inputs ?? emptySet;
+      const newOutputs = newEntry?.outputs ?? emptySet;
+
+      if (!setsEqual(oldInputs, newInputs) || !setsEqual(oldOutputs, newOutputs)) {
+        const instance = this.audioNodes.get(nodeId);
+        instance?.onConnectionsChanged?.({ inputs: newInputs, outputs: newOutputs });
+      }
+    }
+    this.connectedPorts = newConnectedPorts;
   }
 
   dispatchMidi(

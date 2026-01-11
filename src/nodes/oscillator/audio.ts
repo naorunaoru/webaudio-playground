@@ -33,7 +33,6 @@ function createOscillatorRuntime(
   const output = ctx.createGain();
   output.gain.value = 1;
 
-  const osc = ctx.createOscillator();
   const waveSelect = ctx.createGain();
   waveSelect.gain.value = 1;
 
@@ -47,6 +46,7 @@ function createOscillatorRuntime(
     meter.fftSize
   ) as Float32Array<ArrayBufferLike>;
 
+  // Noise buffer is reusable
   const noiseBuffer = ctx.createBuffer(
     1,
     Math.max(1, Math.floor(ctx.sampleRate * 1.0)),
@@ -54,20 +54,56 @@ function createOscillatorRuntime(
   );
   const noise = noiseBuffer.getChannelData(0);
   for (let i = 0; i < noise.length; i++) noise[i] = Math.random() * 2 - 1;
-  const noiseSource = ctx.createBufferSource();
-  noiseSource.buffer = noiseBuffer;
-  noiseSource.loop = true;
 
-  osc.connect(waveSelect);
   waveSelect.connect(output);
-
-  noiseSource.connect(noiseSelect);
   noiseSelect.connect(output);
-
   output.connect(meter);
 
-  osc.start();
-  noiseSource.start();
+  // Track active sources - created/destroyed based on connection state
+  let osc: OscillatorNode | null = null;
+  let noiseSource: AudioBufferSourceNode | null = null;
+  let isConnected = false;
+
+  // Current state for recreating sources
+  let currentWaveform: OscillatorType = "sine";
+  let currentFrequency = A4_HZ;
+
+  const startSources = () => {
+    if (osc || noiseSource) return; // Already running
+
+    osc = ctx.createOscillator();
+    osc.type = currentWaveform;
+    osc.frequency.value = currentFrequency;
+    osc.connect(waveSelect);
+    osc.start();
+
+    noiseSource = ctx.createBufferSource();
+    noiseSource.buffer = noiseBuffer;
+    noiseSource.loop = true;
+    noiseSource.connect(noiseSelect);
+    noiseSource.start();
+  };
+
+  const stopSources = () => {
+    if (osc) {
+      try {
+        osc.stop();
+        osc.disconnect();
+      } catch {
+        // ignore
+      }
+      osc = null;
+    }
+    if (noiseSource) {
+      try {
+        noiseSource.stop();
+        noiseSource.disconnect();
+      } catch {
+        // ignore
+      }
+      noiseSource = null;
+    }
+  };
 
   // Track active notes for control surface display
   const activeNotes = new Set<number>();
@@ -79,7 +115,10 @@ function createOscillatorRuntime(
     type: "oscillator",
     updateState: (state) => {
       const now = ctx.currentTime;
-      osc.type = state.waveform;
+      currentWaveform = state.waveform;
+      if (osc) {
+        osc.type = state.waveform;
+      }
       const targetWave = state.source === "wave" ? 1 : 0;
       const targetNoise = state.source === "noise" ? 1 : 0;
       waveSelect.gain.setTargetAtTime(targetWave, now, 0.01);
@@ -89,13 +128,16 @@ function createOscillatorRuntime(
       if (portId === "audio_out") return meter;
       return null;
     },
-    handleMidi: (event, portId, state) => {
+    handleMidi: (event, portId) => {
       if (portId && portId !== "midi_in") return;
       const now = ctx.currentTime;
 
       if (event.type === "noteOn") {
         const hz = midiToFreqHz(event.note, A4_HZ);
-        osc.frequency.setValueAtTime(hz, now);
+        currentFrequency = hz;
+        if (osc) {
+          osc.frequency.setValueAtTime(hz, now);
+        }
         activeNotes.add(event.note);
         runtimeState = { activeNotes: Array.from(activeNotes) };
       }
@@ -106,24 +148,22 @@ function createOscillatorRuntime(
     },
     getRuntimeState: () => runtimeState,
     onRemove: () => {
+      stopSources();
       meter.disconnect();
       output.disconnect();
       noiseSelect.disconnect();
       waveSelect.disconnect();
-      noiseSource.disconnect();
-      osc.disconnect();
-      try {
-        osc.stop();
-      } catch {
-        // ignore
-      }
-      try {
-        noiseSource.stop();
-      } catch {
-        // ignore
-      }
     },
     getLevel: () => rmsFromAnalyser(meter, meterBuffer),
+    onConnectionsChanged: ({ outputs }) => {
+      const connected = outputs.has("audio_out");
+      if (connected && !isConnected) {
+        startSources();
+      } else if (!connected && isConnected) {
+        stopSources();
+      }
+      isConnected = connected;
+    },
   };
 }
 
