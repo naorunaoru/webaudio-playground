@@ -367,6 +367,9 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       if (!handle) return;
 
       handle.change((doc) => {
+        if (!doc.nodeZOrder) {
+          doc.nodeZOrder = {};
+        }
         doc.nodeZOrder[nodeId] = zIndex;
       });
     },

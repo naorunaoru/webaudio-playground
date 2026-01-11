@@ -64,6 +64,12 @@ export async function getOrCreateMainDocument(
       const handle = await repo.find<GraphDoc>(storedId);
       const doc = handle.doc();
       if (doc && doc.nodes && doc.connections) {
+        // Migrate older documents that don't have nodeZOrder
+        if (!doc.nodeZOrder) {
+          handle.change((d) => {
+            d.nodeZOrder = {};
+          });
+        }
         return { handle, isNew: false };
       }
     } catch {

@@ -256,8 +256,11 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         const zValues = Object.values(currentZ);
         const maxZ = zValues.length > 0 ? Math.max(...zValues) : 0;
         const nodeZ = currentZ[nodeId];
-        // Skip if node is already on top, or if this is the only node without ordering yet
-        if (nodeZ === maxZ || (nodeZ === undefined && zValues.length === 0)) return;
+
+        // Skip if node is already on top
+        if (nodeZ !== undefined && nodeZ === maxZ) {
+          return;
+        }
 
         // Calculate new z-index
         let newZ = maxZ + 1;

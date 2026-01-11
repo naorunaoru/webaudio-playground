@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
+import { useRuntimeStateGetter } from "../../graph/hooks/useNodeRuntimeState";
 import type { GraphNode } from "../../graph/types";
+import type { GainRuntimeState } from "./audio";
 import type { NodeDefinition, NodeUiProps } from "../../types/graphNodeDefinition";
 import { Knob } from "../../ui/components/Knob";
 import { ThemeProvider } from "../../ui/context";
@@ -21,7 +24,29 @@ function defaultState(): GainNodeGraph["state"] {
   return { depth: 1 };
 }
 
-const GainUi: React.FC<NodeUiProps<GainNodeGraph>> = ({ node, onPatchNode, startBatch, endBatch }) => {
+const GainUi: React.FC<NodeUiProps<GainNodeGraph>> = ({ node, onPatchNode, startBatch, endBatch, audioState }) => {
+  const getRuntimeState = useRuntimeStateGetter<GainRuntimeState>(node.id);
+  const [modulatedGain, setModulatedGain] = useState<number | undefined>(undefined);
+
+  // Poll runtime state for modulation display when audio is running
+  useEffect(() => {
+    if (audioState !== "running") {
+      setModulatedGain(undefined);
+      return;
+    }
+
+    let raf = 0;
+    const tick = () => {
+      const state = getRuntimeState();
+      if (state) {
+        setModulatedGain(state.modulatedGain);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [getRuntimeState, audioState]);
+
   return (
     <ThemeProvider theme={gainTheme}>
       <div style={{ display: "flex", justifyContent: "center" }}>
@@ -34,6 +59,7 @@ const GainUi: React.FC<NodeUiProps<GainNodeGraph>> = ({ node, onPatchNode, start
           format={(v) => v.toFixed(2)}
           onDragStart={startBatch}
           onDragEnd={endBatch}
+          modulationValue={modulatedGain}
         />
       </div>
     </ThemeProvider>

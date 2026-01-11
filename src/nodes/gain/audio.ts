@@ -19,6 +19,10 @@ function rmsFromAnalyser(analyser: AnalyserNode, buffer: Float32Array<ArrayBuffe
   return Math.sqrt(sum / buffer.length);
 }
 
+export type GainRuntimeState = {
+  modulatedGain: number;
+};
+
 function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstance<GainGraphNode> {
   const input = ctx.createGain();
 
@@ -28,6 +32,14 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
   const cv = ctx.createGain();
   cv.gain.value = 1;
   cv.connect(vca.gain);
+
+  // Measure the CV signal going to vca.gain
+  // We tap cv's output which carries: (envelope_input * depth)
+  const cvMeter = ctx.createAnalyser();
+  cvMeter.fftSize = 256;
+  cvMeter.smoothingTimeConstant = 0.8;
+  const cvMeterBuffer = new Float32Array(cvMeter.fftSize) as Float32Array<ArrayBufferLike>;
+  cv.connect(cvMeter);
 
   const meter = ctx.createAnalyser();
   meter.fftSize = 256;
@@ -56,6 +68,7 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
       meter.disconnect();
       vca.disconnect();
       input.disconnect();
+      cvMeter.disconnect();
       try {
         cv.disconnect();
       } catch {
@@ -63,6 +76,15 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
       }
     },
     getLevel: () => rmsFromAnalyser(meter, meterBuffer),
+    getRuntimeState: (): GainRuntimeState => {
+      // Read the average value from the CV meter (envelope * depth)
+      cvMeter.getFloatTimeDomainData(cvMeterBuffer as any);
+      let sum = 0;
+      for (let i = 0; i < cvMeterBuffer.length; i++) {
+        sum += cvMeterBuffer[i] ?? 0;
+      }
+      return { modulatedGain: sum / cvMeterBuffer.length };
+    },
   };
 }
 

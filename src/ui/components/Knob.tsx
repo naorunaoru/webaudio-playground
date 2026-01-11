@@ -15,6 +15,8 @@ export interface KnobProps extends ContinuousControlProps, BaseControlProps {
   unit?: string;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  /** When provided, the arc displays this value instead of the base value (for showing modulation) */
+  modulationValue?: number;
 }
 
 /**
@@ -38,6 +40,7 @@ export function Knob({
   unit,
   onDragStart,
   onDragEnd,
+  modulationValue,
 }: KnobProps) {
   const { theme, chrome } = useTheme();
   const [isEditing, setIsEditing] = useState(false);
@@ -60,10 +63,17 @@ export function Knob({
   // Normalize value to 0-1 range
   const normalized = (value - min) / (max - min);
 
+  // Normalize modulation value (clamped to valid range)
+  const modulationNormalized =
+    modulationValue !== undefined
+      ? Math.max(0, Math.min(1, (modulationValue - min) / (max - min)))
+      : normalized;
+
   // Knob rotation: -135° to +135° (270° total range)
   const startAngle = -135;
   const endAngle = 135;
   const angle = startAngle + normalized * (endAngle - startAngle);
+  const modulationAngle = startAngle + modulationNormalized * (endAngle - startAngle);
 
   // SVG dimensions derived from base size
   const size = KNOB_SIZE;
@@ -111,14 +121,18 @@ export function Knob({
   };
 
   // Render arc based on indicator type
+  // When modulationValue is provided, arc shows modulated value; otherwise shows base value
   const renderIndicatorArc = () => {
+    const arcAngle = modulationValue !== undefined ? modulationAngle : angle;
+    const arcNormalized = modulationValue !== undefined ? modulationNormalized : normalized;
+
     switch (indicator) {
       case "bipolar": {
         const centerAngle = 0;
-        if (normalized >= 0.5) {
+        if (arcNormalized >= 0.5) {
           return (
             <path
-              d={arcPath(centerAngle, angle)}
+              d={arcPath(centerAngle, arcAngle)}
               fill="none"
               stroke={theme.primary}
               strokeWidth={trackWidth}
@@ -128,7 +142,7 @@ export function Knob({
         } else {
           return (
             <path
-              d={arcPath(angle, centerAngle)}
+              d={arcPath(arcAngle, centerAngle)}
               fill="none"
               stroke={theme.primary}
               strokeWidth={trackWidth}
@@ -143,7 +157,7 @@ export function Knob({
       default:
         return (
           <path
-            d={arcPath(startAngle, angle)}
+            d={arcPath(startAngle, arcAngle)}
             fill="none"
             stroke={theme.primary}
             strokeWidth={trackWidth}

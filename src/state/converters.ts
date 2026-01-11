@@ -31,11 +31,11 @@ export function docToGraphState(doc: GraphDoc): GraphState {
     })
   );
 
+  const zOrder = doc.nodeZOrder ?? {};
   return {
     nodes,
     connections,
-    nodeZOrder:
-      Object.keys(doc.nodeZOrder).length > 0 ? { ...doc.nodeZOrder } : undefined,
+    nodeZOrder: Object.keys(zOrder).length > 0 ? { ...zOrder } : undefined,
   };
 }
 
