@@ -18,7 +18,7 @@ import type {
 import { getNodeDef } from "./nodeRegistry";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
 import { bezierPath } from "./coordinates";
-import { canConnect, portMetaForNode } from "./graphUtils";
+import { canConnect, portColumnIndex, portMetaForNode } from "./graphUtils";
 import { useDragInteraction, useNodeWidths } from "./hooks";
 import {
   DragConnectionPreview,
@@ -145,7 +145,23 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     // Build render cache
     const renderCache = useMemo(() => {
-      if (!graph) return { nodes: [], connections: [] };
+      if (!graph) return { nodes: [], connections: [], connectedPortsByNode: new Map<string, Set<string>>() };
+
+      // Compute connected ports per node
+      const connectedPortsByNode = new Map<string, Set<string>>();
+      for (const conn of graph.connections) {
+        // Add the output port for the source node
+        if (!connectedPortsByNode.has(conn.from.nodeId)) {
+          connectedPortsByNode.set(conn.from.nodeId, new Set());
+        }
+        connectedPortsByNode.get(conn.from.nodeId)!.add(conn.from.portId);
+
+        // Add the input port for the destination node
+        if (!connectedPortsByNode.has(conn.to.nodeId)) {
+          connectedPortsByNode.set(conn.to.nodeId, new Set());
+        }
+        connectedPortsByNode.get(conn.to.nodeId)!.add(conn.to.portId);
+      }
 
       const nodes = graph.nodes.map((node) => {
         const def = getNodeDef(node.type);
@@ -183,16 +199,15 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           const toNode = nodeById.get(c.to.nodeId);
           if (!fromNode || !toNode) return null;
 
-          const fromIndex = fromNode.portIndex.get(c.from.portId);
-          const toIndex = toNode.portIndex.get(c.to.portId);
-          if (fromIndex == null || toIndex == null) return null;
-
-          const fromPort = fromNode.ports[fromIndex];
-          const toPort = toNode.ports[toIndex];
+          const fromPort = fromNode.ports.find((p) => p.id === c.from.portId);
+          const toPort = toNode.ports.find((p) => p.id === c.to.portId);
           if (!fromPort || !toPort) return null;
 
-          const fp1 = portCenter(fromNode.node, fromPort as any, fromIndex);
-          const fp2 = portCenter(toNode.node, toPort as any, toIndex);
+          const fromColIdx = portColumnIndex(fromNode.ports, c.from.portId);
+          const toColIdx = portColumnIndex(toNode.ports, c.to.portId);
+
+          const fp1 = portCenter(fromNode.node, fromPort as any, fromColIdx);
+          const fp2 = portCenter(toNode.node, toPort as any, toColIdx);
           return {
             connection: c,
             d: bezierPath(fp1.x, fp1.y, fp2.x, fp2.y),
@@ -200,7 +215,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         })
         .filter((v): v is NonNullable<typeof v> => v != null);
 
-      return { nodes, connections };
+      return { nodes, connections, connectedPortsByNode };
     }, [graph, nodeWidths]);
 
     const worldSize = useMemo(() => {
@@ -342,6 +357,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                     zIndex={graph.nodeZOrder?.[node.id] ?? 0}
                     audioState={audioState}
                     midiVisible={midiVisible}
+                    connectedPorts={renderCache.connectedPortsByNode.get(node.id)}
                     Ui={Ui}
                     rootRef={rootRef}
                     scrollRef={scrollRef}

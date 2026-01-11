@@ -9,6 +9,8 @@ export type NodeUiProps<TNode extends GraphNode> = Readonly<{
   onEmitMidi?: (nodeId: NodeId, event: MidiEvent) => void | Promise<void>;
   /** Audio context state - can be used to conditionally poll runtime state */
   audioState?: AudioContextState | "off";
+  /** Set of port IDs that have active connections */
+  connectedPorts?: ReadonlySet<string>;
   startBatch?: () => void;
   endBatch?: () => void;
 }>;

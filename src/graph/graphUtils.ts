@@ -79,6 +79,20 @@ export function createNode<TType extends GraphNode["type"]>(
   } as Extract<GraphNode, { type: TType }>;
 }
 
+/**
+ * Returns the index of a port within its column (inputs or outputs).
+ * Ports are rendered in two columns: inputs on the left, outputs on the right.
+ */
+export function portColumnIndex(
+  ports: readonly PortSpec[],
+  portId: PortId
+): number {
+  const port = ports.find((p) => p.id === portId);
+  if (!port) return 0;
+  const sameDirectionPorts = ports.filter((p) => p.direction === port.direction);
+  return sameDirectionPorts.findIndex((p) => p.id === portId);
+}
+
 export function normalizeGraph(graph: GraphState): GraphState {
   const nodes = graph.nodes.map((n) => {
     const def = getNodeDef(n.type as any) as any;

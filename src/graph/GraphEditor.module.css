@@ -88,14 +88,17 @@
 .portDot {
   position: absolute;
   top: 0;
-  width: 9px;
-  height: 9px;
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 2px solid rgba(255, 255, 255, 0.4);
-  box-sizing: border-box;
   transform: translate(-50%, -50%);
   pointer-events: auto;
+  box-sizing: border-box;
+}
+
+.portDotDisconnected {
+  background: transparent !important;
+  border: 2px solid;
 }
 
 .portLabel {

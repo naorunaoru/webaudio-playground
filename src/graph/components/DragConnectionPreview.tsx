@@ -2,7 +2,7 @@ import type { DragState, GraphNode, GraphState, PortKind } from "../types";
 import { portKindColor } from "../nodeRegistry";
 import { bezierPath } from "../coordinates";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT } from "../layout";
-import { findNode, portById, portMetaForNode } from "../graphUtils";
+import { findNode, portById, portColumnIndex, portMetaForNode } from "../graphUtils";
 
 export type DragConnectionPreviewProps = {
   drag: DragState;
@@ -24,13 +24,13 @@ export function DragConnectionPreview({
   const fromPort = portById(fromNode, drag.from.portId);
   if (!fromPort) return null;
 
-  const fromIndex = ports.findIndex((p) => p.id === fromPort.id);
+  const fromColIdx = portColumnIndex(ports, fromPort.id);
   const width = nodeWidths[fromNode.id] ?? 240;
   const x = fromPort.direction === "in" ? fromNode.x : fromNode.x + width;
   const y =
     fromNode.y +
     NODE_HEADER_HEIGHT +
-    fromIndex * PORT_ROW_HEIGHT +
+    fromColIdx * PORT_ROW_HEIGHT +
     PORT_ROW_HEIGHT / 2;
   const d = bezierPath(x, y, drag.toX, drag.toY);
 

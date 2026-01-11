@@ -20,12 +20,14 @@ export type GraphNodeCardProps = {
   zIndex: number;
   audioState: AudioContextState | "off";
   midiVisible: boolean;
+  connectedPorts?: ReadonlySet<string>;
   Ui: React.ComponentType<{
     node: GraphNode;
     onPatchNode: (nodeId: NodeId, patch: Partial<any>) => void;
     onPatchNodeEphemeral?: (nodeId: NodeId, patch: Partial<any>) => void;
     onEmitMidi: (nodeId: NodeId, event: MidiEvent) => Promise<void>;
     audioState?: AudioContextState | "off";
+    connectedPorts?: ReadonlySet<string>;
     startBatch?: () => void;
     endBatch?: () => void;
   }>;
@@ -49,6 +51,7 @@ export function GraphNodeCard({
   zIndex,
   audioState,
   midiVisible,
+  connectedPorts,
   Ui,
   rootRef,
   scrollRef,
@@ -136,46 +139,62 @@ export function GraphNodeCard({
       </div>
 
       <div className={styles.nodeBody}>
-        {ports.map((port, index) => {
-          const top = index * PORT_ROW_HEIGHT + PORT_ROW_HEIGHT / 2;
-          const kindColor = portKindColor(port.kind);
-          const dotStyle: React.CSSProperties = { borderColor: kindColor };
-          const dotDataProps = {
-            "data-port": "1",
-            "data-node-id": node.id,
-            "data-port-id": port.id,
-            "data-port-direction": port.direction,
-            "data-port-kind": port.kind,
-          } as const;
+        {(() => {
+          const inputPorts = ports.filter((p) => p.direction === "in");
+          const outputPorts = ports.filter((p) => p.direction === "out");
+
+          const renderPort = (port: PortSpec, indexInColumn: number) => {
+            const top = indexInColumn * PORT_ROW_HEIGHT + PORT_ROW_HEIGHT / 2;
+            const kindColor = portKindColor(port.kind);
+            const isConnected = connectedPorts?.has(port.id) ?? false;
+            const dotStyle: React.CSSProperties = isConnected
+              ? { background: kindColor }
+              : { borderColor: kindColor };
+            const dotDataProps = {
+              "data-port": "1",
+              "data-node-id": node.id,
+              "data-port-id": port.id,
+              "data-port-direction": port.direction,
+              "data-port-kind": port.kind,
+            } as const;
+
+            return (
+              <div
+                key={port.id}
+                className={`${styles.portRow} ${
+                  port.direction === "in" ? styles.portIn : styles.portOut
+                }`}
+                style={{ top }}
+              >
+                <div
+                  {...dotDataProps}
+                  className={`${styles.portDot} ${!isConnected ? styles.portDotDisconnected : ""}`}
+                  style={dotStyle}
+                  onPointerDown={
+                    port.direction === "out"
+                      ? handlePortPointerDown(port)
+                      : undefined
+                  }
+                />
+                <div className={styles.portLabel}>{port.name}</div>
+              </div>
+            );
+          };
 
           return (
-            <div
-              key={port.id}
-              className={`${styles.portRow} ${
-                port.direction === "in" ? styles.portIn : styles.portOut
-              }`}
-              style={{ top }}
-            >
-              <div
-                {...dotDataProps}
-                className={styles.portDot}
-                style={dotStyle}
-                onPointerDown={
-                  port.direction === "out"
-                    ? handlePortPointerDown(port)
-                    : undefined
-                }
-              />
-              <div className={styles.portLabel}>{port.name}</div>
-            </div>
+            <>
+              {inputPorts.map((port, idx) => renderPort(port, idx))}
+              {outputPorts.map((port, idx) => renderPort(port, idx))}
+            </>
           );
-        })}
+        })()}
         <Ui
           node={node}
           onPatchNode={onPatchNode}
           onPatchNodeEphemeral={onPatchNodeEphemeral}
           onEmitMidi={onEmitMidi}
           audioState={audioState}
+          connectedPorts={connectedPorts}
           startBatch={startBatch}
           endBatch={endBatch}
         />

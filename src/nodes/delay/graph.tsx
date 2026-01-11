@@ -21,10 +21,12 @@ function clamp(v: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, v));
 }
 
-const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode, startBatch, endBatch }) => {
+const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode, connectedPorts, startBatch, endBatch }) => {
   const delayMs = clamp(node.state.delayMs, 0, 5000);
   const feedback = clamp(node.state.feedback, 0, 0.98);
   const mix = clamp(node.state.mix, 0, 1);
+
+  const hasExternalFeedback = connectedPorts?.has("feedback_return") ?? false;
 
   return (
     <ThemeProvider theme={delayTheme}>
@@ -45,7 +47,7 @@ const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode, startBat
           onChange={(v) => onPatchNode(node.id, { feedback: v })}
           min={0}
           max={0.98}
-          label="Feedback"
+          label={hasExternalFeedback ? "Return" : "Feedback"}
           format={(v) => `${Math.round(v * 100)}%`}
           onDragStart={startBatch}
           onDragEnd={endBatch}
@@ -72,6 +74,8 @@ export const delayGraph: NodeDefinition<DelayNode> = {
   ports: () => [
     { id: "audio_in", name: "In", kind: "audio", direction: "in" },
     { id: "audio_out", name: "Out", kind: "audio", direction: "out" },
+    { id: "feedback_send", name: "FB Send", kind: "audio", direction: "out" },
+    { id: "feedback_return", name: "FB Return", kind: "audio", direction: "in" },
   ],
   ui: DelayUi,
   normalizeState: (state) => {
