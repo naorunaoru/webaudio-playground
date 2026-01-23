@@ -108,10 +108,12 @@ Events are dispatched through the graph using BFS traversal, following edges of 
 engine.dispatchMidi(graph, sourceNodeId, midiEvent);
 
 // New event dispatch (same pattern)
-engine.dispatchEvent(graph, sourceNodeId, voiceEvent);
+engine.dispatchEvent(graph, sourceNodeId, portId, voiceEvent);
 ```
 
 A cable connection represents a subscription — when node A connects its gate output to node B's gate input, node B receives events dispatched from node A.
+
+**Direct dispatch:** Nodes call `engine.dispatchEvent()` directly when they have an event to emit. This keeps timing immediate — important for sample-accurate scheduling. No queuing or batching; events are dispatched as they occur.
 
 **Sample-accurate response:**
 
@@ -337,12 +339,12 @@ Events are messages with timestamps, routed via BFS through graph connections. R
 
 **Tasks:**
 
-1. Add `channelCount` to `PortSpec` (default to 1 for existing nodes)
+1. Add `channelCount` to `PortSpec` (per-port, default to 1 for existing nodes)
 2. Refactor `getAudioOutput/Input` to return arrays (`AudioNode[]` instead of `AudioNode`)
 3. Update connection logic in engine to handle N:M channel connections
 4. Add new port kinds: `cv`, `pitch`, `gate`, `trigger`
-5. Implement event dispatch system (parallel to MIDI dispatch)
-6. Remove `midiPitch` node (experimental, no longer needed)
+5. Implement event dispatch system (parallel to MIDI dispatch, direct dispatch from nodes)
+6. Remove experimental nodes: `midiPitch`, `pmOscillator`, `pmPhasor`, `pmSin`
 
 **Result:** Existing nodes continue to work (all mono), but infrastructure supports poly.
 
@@ -416,9 +418,26 @@ interface PortSpec {
   name: string;
   kind: PortKind;
   direction: 'in' | 'out';
-  channelCount: number;  // 1 = mono, N = poly
+  channelCount: number;  // 1 = mono, N = poly (per-port, not per-node)
 }
+```
 
+**Channel count is per-port, not per-node.** A single node can have ports with different channel counts:
+
+```typescript
+// Example: MIDI-to-CV node with 8 voices
+const ports: PortSpec[] = [
+  { id: 'gate', name: 'Gate', kind: 'gate', direction: 'out', channelCount: 8 },
+  { id: 'pitch', name: 'Pitch', kind: 'pitch', direction: 'out', channelCount: 8 },
+  { id: 'velocity', name: 'Velocity', kind: 'cv', direction: 'out', channelCount: 8 },
+  { id: 'mod', name: 'Mod', kind: 'cv', direction: 'out', channelCount: 1 },  // Global, mono
+  { id: 'sustain', name: 'Sustain', kind: 'cv', direction: 'out', channelCount: 1 },  // Global, mono
+];
+```
+
+A node's parameters (like "voice count") determine what the channel counts are for its ports. The ports function returns the current port specs based on node state.
+
+```typescript
 interface ParameterInfo {
   name: string;
   range: [number, number];
@@ -592,20 +611,49 @@ function noteOff(voiceIndex, time) {
 }
 ```
 
-### Oscillator V/oct Conversion
+### Oscillator Implementation (AudioWorklet)
 
-Oscillators receive V/oct pitch CV and convert to Hz internally:
+Oscillators that accept V/oct pitch CV input must use AudioWorklet. Native `OscillatorNode.frequency` expects Hz, but the V/oct → Hz conversion is exponential (`hz = C0 * 2^vOct`), which cannot be done with native Web Audio node math (which is linear/additive).
+
+**AudioWorklet oscillator benefits:**
+
+- Accepts V/oct pitch input directly, converts to Hz internally
+- Audio-rate pitch modulation (FM, vibrato) works correctly
+- More control over waveform generation (custom waveforms, wavetables)
+- Poly-aware from the start (N voices = N channels in worklet)
 
 ```javascript
-// V/oct to Hz conversion
-function vOctToHz(vOct) {
-  const C0 = 16.35159783; // Reference: 0V = C0
-  return C0 * Math.pow(2, vOct);
-}
+// In AudioWorklet processor
+process(inputs, outputs, parameters) {
+  const pitchInput = inputs[0];  // V/oct from pitch CV input
+  const output = outputs[0];
 
-// In oscillator, pitch CV is summed then converted
-// Using AudioWorklet or ConstantSource + GainNode math
+  for (let voice = 0; voice < this.voiceCount; voice++) {
+    const pitchChannel = pitchInput[voice] || pitchInput[0];  // Fan-out if mono
+    const outputChannel = output[voice];
+
+    for (let i = 0; i < outputChannel.length; i++) {
+      // V/oct to Hz conversion per sample
+      const vOct = pitchChannel?.[i] ?? this.baseVOct;
+      const hz = 16.35159783 * Math.pow(2, vOct);  // C0 = 16.35 Hz
+
+      // Phase increment
+      this.phases[voice] += hz / sampleRate;
+      this.phases[voice] %= 1;
+
+      // Generate waveform
+      outputChannel[i] = this.generateSample(this.phases[voice], this.waveform);
+    }
+  }
+  return true;
+}
 ```
+
+**V/oct reference:**
+
+- 0V = C0 ≈ 16.35 Hz
+- MIDI note to V/oct: `midiNote / 12`
+- Transposition: +1V = up one octave, +7/12 V = up a fifth
 
 ### Envelope Implementation
 
@@ -720,7 +768,9 @@ The hybrid approach (native nodes + AudioWorklet where needed) is the right trad
 
 8. **MIDI routing:** Unchanged. The `midi` port kind continues to use existing MIDI dispatch. MIDI-to-CV node bridges MIDI to the CV/gate world.
 
-9. **Channel count:** Runtime parameter on nodes, not fixed at compile time. Dynamic allocation is future work.
+9. **Channel count:** Per-port runtime value, not per-node or fixed at compile time. Different ports on the same node can have different channel counts. Dynamic allocation is future work.
+
+10. **Oscillator implementation:** AudioWorklet-based. Native `OscillatorNode` cannot accept V/oct pitch CV (the exponential conversion requires sample-by-sample processing). AudioWorklet also enables custom waveforms and poly-aware processing.
 
 ## References
 
