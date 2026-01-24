@@ -2,11 +2,12 @@ import type { GraphNode } from "@graph/types";
 import type { NodeModule } from "@/types/nodeModule";
 import { midiSourceNode } from "./midiSource";
 import { ccSourceNode } from "./ccSource";
-import { midiPitchNode } from "./midiPitch";
+import { midiToCvNode } from "./midiToCv";
+import { midiChordNode } from "./midiChord";
+import { midiMonitorNode } from "./midiMonitor";
 import { oscillatorNode } from "./oscillator";
-import { pmOscillatorNode } from "./pmOscillator";
-import { pmPhasorNode } from "./pmPhasor";
-import { pmSinNode } from "./pmSin";
+import { vcoNode } from "./vco";
+import { vcaNode } from "./vca";
 import { envelopeNode } from "./envelope";
 import { gainNode } from "./gain";
 import { filterNode } from "./filter";
@@ -19,11 +20,12 @@ import { audioOutNode } from "./audioOut";
 export const NODE_MODULES = {
   midiSource: midiSourceNode,
   ccSource: ccSourceNode,
-  midiPitch: midiPitchNode,
+  midiToCv: midiToCvNode,
+  midiChord: midiChordNode,
+  midiMonitor: midiMonitorNode,
   oscillator: oscillatorNode,
-  pmOscillator: pmOscillatorNode,
-  pmPhasor: pmPhasorNode,
-  pmSin: pmSinNode,
+  vco: vcoNode,
+  vca: vcaNode,
   envelope: envelopeNode,
   gain: gainNode,
   filter: filterNode,

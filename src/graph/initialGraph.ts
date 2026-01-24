@@ -39,13 +39,13 @@ export function initialGraph(): GraphState {
       },
       {
         id: "c_env_gain",
-        kind: "automation",
+        kind: "cv",
         from: { nodeId: "n_env", portId: "env_out" },
         to: { nodeId: "n_gain", portId: "gain_in" },
       },
       {
         id: "c_env_filter",
-        kind: "automation",
+        kind: "cv",
         from: { nodeId: "n_env", portId: "env_out" },
         to: { nodeId: "n_filter", portId: "freq_in" },
       },

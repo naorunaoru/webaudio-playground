@@ -1,9 +1,8 @@
 # Architecture
 
-Documentation for cross-cutting architectural concerns.
+Cross-cutting architectural documentation.
 
 ## Documents
 
-- [Graph Context](./graph-context.md) — Hierarchical reactive context system for tempo, tuning, and transport
-- [High-Rate Processing](./high-rate-processing.md) — Proposed architecture for processing above AudioContext sample rate (draft)
-- [Polyphony](./polyphony.md) — Polyphonic cables and patching (new).
+- [Graph Context](./graph-context.md) — Reactive context system for tempo, tuning, and transport
+- [Polyphony](./polyphony.md) — Polyphonic cables, gate/trigger events, and CV routing

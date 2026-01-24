@@ -66,15 +66,15 @@ function createDelayRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstan
       wet.gain.setTargetAtTime(mix, now, 0.02);
       dry.gain.setTargetAtTime(1 - mix, now, 0.02);
     },
-    getAudioInput: (portId) => {
-      if (portId === "audio_in") return input;
-      if (portId === "feedback_return") return feedbackReturn;
-      return null;
+    getAudioInputs: (portId) => {
+      if (portId === "audio_in") return [input];
+      if (portId === "feedback_return") return [feedbackReturn];
+      return [];
     },
-    getAudioOutput: (portId) => {
-      if (portId === "audio_out") return meter;
-      if (portId === "feedback_send") return feedbackSend;
-      return null;
+    getAudioOutputs: (portId) => {
+      if (portId === "audio_out") return [meter];
+      if (portId === "feedback_send") return [feedbackSend];
+      return [];
     },
     onConnectionsChanged: ({ inputs }) => {
       const hasExternalFeedback = inputs.has("feedback_return");

@@ -1,4 +1,11 @@
-export type PortKind = "audio" | "midi" | "cc" | "automation";
+export type PortKind =
+  | "audio" // Continuous audio-rate signal (-1 to 1)
+  | "cv" // Continuous control voltage (0-1 or -1 to 1)
+  | "pitch" // V/oct pitch CV (continuous)
+  | "gate" // Event: on/off with duration (discrete)
+  | "trigger" // Event: instantaneous (discrete)
+  | "midi"; // MIDI messages
+
 export type PortDirection = "in" | "out";
 
 // Augment this interface from `src/nodes/<node>/types.ts` to register new node types.
@@ -17,6 +24,8 @@ export type PortSpec = Readonly<{
   name: string;
   kind: PortKind;
   direction: PortDirection;
+  /** Number of channels (1 = mono, N = poly). Per-port, not per-node. */
+  channelCount?: number;
 }>;
 
 export type ConnectionEndpoint = Readonly<{
@@ -72,6 +81,24 @@ export type MidiEvent =
       channel: number;
       atMs: number;
     };
+
+/** Gate event: state change with duration (on/off). */
+export type GateEvent = Readonly<{
+  type: "gate";
+  voice: number;
+  state: "on" | "off";
+  time: number; // AudioContext.currentTime for sample-accurate scheduling
+}>;
+
+/** Trigger event: instantaneous event. */
+export type TriggerEvent = Readonly<{
+  type: "trigger";
+  voice: number;
+  time: number; // AudioContext.currentTime for sample-accurate scheduling
+}>;
+
+/** Voice event: gate or trigger. */
+export type VoiceEvent = GateEvent | TriggerEvent;
 
 export type DragState =
   | { type: "none" }

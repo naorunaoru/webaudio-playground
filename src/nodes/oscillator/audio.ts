@@ -124,9 +124,9 @@ function createOscillatorRuntime(
       waveSelect.gain.setTargetAtTime(targetWave, now, 0.01);
       noiseSelect.gain.setTargetAtTime(targetNoise, now, 0.01);
     },
-    getAudioOutput: (portId) => {
-      if (portId === "audio_out") return meter;
-      return null;
+    getAudioOutputs: (portId) => {
+      if (portId === "audio_out") return [meter];
+      return [];
     },
     handleMidi: (event, portId) => {
       if (portId && portId !== "midi_in") return;

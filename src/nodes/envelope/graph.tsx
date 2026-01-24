@@ -167,8 +167,8 @@ export const envelopeGraph: NodeDefinition<EnvelopeNode> = {
   title: "Envelope",
   defaultState,
   ports: () => [
-    { id: "midi_in", name: "MIDI", kind: "midi", direction: "in" },
-    { id: "env_out", name: "Env", kind: "automation", direction: "out" },
+    { id: "gate_in", name: "Gate", kind: "gate", direction: "in" },
+    { id: "env_out", name: "Env", kind: "cv", direction: "out" },
   ],
   ui: EnvelopeUi,
   normalizeState: (state) => {

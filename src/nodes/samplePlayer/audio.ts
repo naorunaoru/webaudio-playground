@@ -152,9 +152,9 @@ function createSamplePlayerRuntime(
       outGain.gain.value = clamp(state.gain, 0, 2);
       prefetch(state);
     },
-    getAudioOutput: (portId) => {
-      if (portId === "audio_out") return meter;
-      return null;
+    getAudioOutputs: (portId) => {
+      if (portId === "audio_out") return [meter];
+      return [];
     },
     handleMidi: (event, portId, state) => {
       if (portId && portId !== "midi_in") return;

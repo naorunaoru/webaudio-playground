@@ -52,14 +52,14 @@ function createFilterRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInsta
       filter.Q.setTargetAtTime(q, now, 0.02);
       freqCv.gain.setTargetAtTime(envAmount, now, 0.02);
     },
-    getAudioInput: (portId) => {
-      if (portId === "audio_in") return input;
-      if (portId === "freq_in") return freqCv;
-      return null;
+    getAudioInputs: (portId) => {
+      if (portId === "audio_in") return [input];
+      if (portId === "freq_in") return [freqCv];
+      return [];
     },
-    getAudioOutput: (portId) => {
-      if (portId === "audio_out") return meter;
-      return null;
+    getAudioOutputs: (portId) => {
+      if (portId === "audio_out") return [meter];
+      return [];
     },
     onRemove: () => {
       meter.disconnect();

@@ -4,7 +4,6 @@ import type {
   MidiEvent,
   NodeId,
   PortId,
-  PortKind,
 } from "./types";
 import { getNodeDef } from "./nodeRegistry";
 import { findNode } from "./graphUtils";
@@ -20,10 +19,9 @@ export function routeMidi(
   const queue: MidiDelivery[] = [];
   const nodePatches = new Map<NodeId, Partial<any>>();
 
-  const edgeKind: PortKind = event.type === "cc" ? "cc" : "midi";
-
+  // All MIDI events route through 'midi' edges
   const starts = graph.connections.filter(
-    (c) => c.kind === edgeKind && c.from.nodeId === sourceNodeId
+    (c) => c.kind === "midi" && c.from.nodeId === sourceNodeId
   );
   for (const conn of starts)
     queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
@@ -48,7 +46,7 @@ export function routeMidi(
     }
 
     const outgoing = graph.connections.filter(
-      (c) => c.kind === edgeKind && c.from.nodeId === node.id
+      (c) => c.kind === "midi" && c.from.nodeId === node.id
     );
     for (const conn of outgoing)
       queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
@@ -78,10 +76,9 @@ export function computeMidiPatches(
   const queue: MidiDelivery[] = [];
   const nodePatches = new Map<NodeId, Record<string, unknown>>();
 
-  const edgeKind: PortKind = event.type === "cc" ? "cc" : "midi";
-
+  // All MIDI events route through 'midi' edges
   const starts = graph.connections.filter(
-    (c) => c.kind === edgeKind && c.from.nodeId === sourceNodeId
+    (c) => c.kind === "midi" && c.from.nodeId === sourceNodeId
   );
   for (const conn of starts)
     queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
@@ -106,7 +103,7 @@ export function computeMidiPatches(
     }
 
     const outgoing = graph.connections.filter(
-      (c) => c.kind === edgeKind && c.from.nodeId === node.id
+      (c) => c.kind === "midi" && c.from.nodeId === node.id
     );
     for (const conn of outgoing)
       queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });

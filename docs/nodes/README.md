@@ -22,9 +22,7 @@ Adding a node means creating a new folder under `src/nodes/<yourNode>/`.
 | [graph-definition.md](./graph-definition.md) | Ports, UI components, event handling |
 | [audio-runtime.md](./audio-runtime.md) | Audio factories and node instances |
 | [registration.md](./registration.md) | Module exports and registration |
-| [event-flow.md](./event-flow.md) | MIDI/CC routing and audio wiring |
 | [wasm.md](./wasm.md) | WebAssembly build system |
-| [node-catalog.md](./node-catalog.md) | List of implemented nodes |
 
 ## File Structure
 

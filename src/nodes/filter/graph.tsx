@@ -113,7 +113,7 @@ export const filterGraph: NodeDefinition<FilterNodeGraph> = {
   defaultState,
   ports: () => [
     { id: "audio_in", name: "In", kind: "audio", direction: "in" },
-    { id: "freq_in", name: "Freq", kind: "automation", direction: "in" },
+    { id: "freq_in", name: "Freq", kind: "cv", direction: "in" },
     { id: "audio_out", name: "Out", kind: "audio", direction: "out" },
   ],
   ui: FilterUi,

@@ -9,6 +9,24 @@ import type {
 import { getNodeDef } from "./nodeRegistry";
 import { createId } from "./id";
 
+/**
+ * Check if two port kinds are compatible for connection.
+ * - Audio-like (continuous signals): audio, cv, pitch can interconnect
+ * - Event-like (discrete events): gate, trigger can interconnect
+ * - MIDI: only connects to MIDI
+ */
+function areKindsCompatible(a: PortKind, b: PortKind): boolean {
+  if (a === b) return true;
+
+  const audioLike: PortKind[] = ["audio", "cv", "pitch"];
+  if (audioLike.includes(a) && audioLike.includes(b)) return true;
+
+  const eventLike: PortKind[] = ["gate", "trigger"];
+  if (eventLike.includes(a) && eventLike.includes(b)) return true;
+
+  return false;
+}
+
 export function portMetaForNode(node: GraphNode): readonly PortSpec[] {
   const def = getNodeDef(node.type);
   return def.ports(node as any);
@@ -52,7 +70,7 @@ export function canConnect(
   if (fromPort.direction !== "out" || toPort.direction !== "in") {
     return { ok: false, reason: "direction mismatch" };
   }
-  if (fromPort.kind !== toPort.kind)
+  if (!areKindsCompatible(fromPort.kind, toPort.kind))
     return { ok: false, reason: "kind mismatch" };
 
   const key = connectionKey(fromPort.kind, from, to);
@@ -113,8 +131,8 @@ export function normalizeGraph(graph: GraphState): GraphState {
       .find((p) => p.id === c.to.portId);
     if (!fromPort || !toPort) return false;
     if (fromPort.direction !== "out" || toPort.direction !== "in") return false;
-    if (fromPort.kind !== toPort.kind) return false;
-    if (c.kind !== fromPort.kind) return false;
+    if (!areKindsCompatible(fromPort.kind, toPort.kind)) return false;
+    if (!areKindsCompatible(c.kind, fromPort.kind)) return false;
     return true;
   });
 

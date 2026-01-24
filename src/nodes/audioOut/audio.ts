@@ -16,9 +16,9 @@ function createAudioOutRuntime(
   return {
     type: "audioOut",
     updateState: () => {},
-    getAudioInput: (portId) => {
-      if (portId === "audio_in") return input;
-      return null;
+    getAudioInputs: (portId) => {
+      if (portId === "audio_in") return [input];
+      return [];
     },
     onRemove: () => {
       input.disconnect();

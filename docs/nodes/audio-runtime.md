@@ -4,7 +4,7 @@ Audio runtimes manage Web Audio API nodes for each graph node. They're optional 
 
 ## AudioNodeInstance Interface
 
-From `src/types/nodeModule.ts`:
+From `src/types/audioRuntime.ts`:
 
 ```ts
 type AudioNodeInstance<TNode extends GraphNode> = {
@@ -13,12 +13,18 @@ type AudioNodeInstance<TNode extends GraphNode> = {
   // Required
   updateState: (state: TNode["state"]) => void;
 
-  // Audio I/O (implement based on your ports)
-  getAudioInput?: (portId: string) => AudioNode | AudioParam | null;
-  getAudioOutput?: (portId: string) => AudioNode | null;
+  // Audio I/O - returns arrays for polyphony support
+  getAudioInputs?: (portId: string) => (AudioNode | AudioParam)[];
+  getAudioOutputs?: (portId: string) => AudioNode[];
 
   // MIDI handling
   handleMidi?: (event: MidiEvent, portId: string | null, state: TNode["state"]) => void;
+
+  // Gate/trigger event handling (for polyphonic voice events)
+  handleEvent?: (portId: string, event: VoiceEvent) => void;
+
+  // Graph reference (for nodes that need to dispatch events)
+  setGraphRef?: (graph: GraphState) => void;
 
   // Cleanup
   onRemove?: () => void;
@@ -31,6 +37,8 @@ type AudioNodeInstance<TNode extends GraphNode> = {
   getRuntimeState?: () => unknown;
 };
 ```
+
+**Note:** Audio I/O methods return arrays to support polyphonic (N-channel) connections. For mono nodes, return single-element arrays.
 
 ## AudioNodeFactory Interface
 
@@ -92,32 +100,34 @@ export function gainAudioFactory(): AudioNodeFactory<GainNode> {
 
 ## Audio I/O Methods
 
-### getAudioInput
+### getAudioInputs
 
-Returns the Web Audio node/param that receives audio for a given port:
+Returns an array of Web Audio nodes/params that receive audio for a given port:
 
 ```ts
-getAudioInput: (portId) => {
+getAudioInputs: (portId) => {
   switch (portId) {
-    case "audio_in": return inputGain;           // AudioNode
-    case "cv_frequency": return filter.frequency; // AudioParam
-    default: return null;
+    case "audio_in": return [inputGain];           // AudioNode
+    case "cv_frequency": return [filter.frequency]; // AudioParam
+    default: return [];
   }
 },
 ```
 
-Returning an `AudioParam` allows direct modulation from CV sources.
+Returning an `AudioParam` allows direct CV modulation. For polyphonic nodes, return N elements.
 
-### getAudioOutput
+### getAudioOutputs
 
-Returns the Web Audio node that outputs audio for a given port:
+Returns an array of Web Audio nodes that output audio for a given port:
 
 ```ts
-getAudioOutput: (portId) => {
-  if (portId === "audio_out") return outputGain;
-  return null;
+getAudioOutputs: (portId) => {
+  if (portId === "audio_out") return [outputGain];
+  return [];
 },
 ```
+
+For polyphonic nodes, return N elements (one per voice channel).
 
 ## MIDI Handling
 
@@ -188,11 +198,15 @@ The factory function receives `AudioNodeServices`:
 
 ```ts
 type AudioNodeServices = {
-  masterInput: AudioNode;  // Connect here for master output
+  masterInput: AudioNode;       // Connect here for master output
+  graphContext: AudioGraphContext;  // Tempo, A4 tuning, etc.
+  dispatchEvent: DispatchEventFn;   // Dispatch gate/trigger events
 };
 ```
 
-Used by the audioOut node to route to the master bus.
+- `masterInput`: Used by audioOut to route to the master bus
+- `graphContext`: Subscribe to tempo, A4 tuning, time signature
+- `dispatchEvent`: Dispatch VoiceEvents to connected nodes (for MIDI-to-CV, etc.)
 
 ## Complex Example: Oscillator
 
@@ -329,13 +343,11 @@ At a high level, sync does:
 - Push the latest persisted node state into each runtime via `updateState(state)`
 - Rebuild audio and automation connections based on the graph’s current edges
 
-Only `audio` and `automation` connections affect the Web Audio graph. MIDI/CC routing is handled separately (see below).
+Audio-like connections (`audio`, `cv`, `pitch`) use Web Audio node connections. Event connections (`gate`, `trigger`) and MIDI use BFS dispatch.
 
-### MIDI/CC Dispatch to Runtimes
+### Event Dispatch
 
-Some nodes need time-critical responses on the audio side (e.g. note triggers). For that, the engine can propagate MIDI/CC events through the connection graph and call `handleMidi(event, portId, effectiveState)` on each reached runtime.
-
-This is the runtime counterpart to the graph-layer routing described in [event-flow.md](./event-flow.md).
+Gate and trigger events are dispatched via `dispatchEvent()` and delivered to nodes via `handleEvent()`. This enables sample-accurate scheduling through Web Audio automation.
 
 ### Metering and Runtime Telemetry
 

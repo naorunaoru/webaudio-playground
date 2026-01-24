@@ -4,6 +4,7 @@ import type {
   GraphState,
   MidiEvent,
   NodeId,
+  VoiceEvent,
 } from "@graph/types";
 import {
   createBuiltInAudioNodeFactories,
@@ -192,6 +193,8 @@ export class AudioEngine {
         ...createBuiltInAudioNodeFactories({
           masterInput: this.masterGain,
           graphContext: this.rootContext,
+          dispatchEvent: this.dispatchEvent.bind(this),
+          dispatchMidi: this.dispatchMidi.bind(this),
         }),
         ...this.factoryOverrides,
       };
@@ -224,23 +227,37 @@ export class AudioEngine {
     if (this.factories) this.factories[type] = factory;
   }
 
+  /** Check if a port kind carries continuous audio/CV signals */
+  private isAudioKind(kind: GraphConnection["kind"]): boolean {
+    return kind === "audio" || kind === "cv" || kind === "pitch";
+  }
+
+  /** Check if a port kind carries discrete events */
+  private isEventKind(kind: GraphConnection["kind"]): boolean {
+    return kind === "gate" || kind === "trigger";
+  }
+
   /**
-   * Disconnect a specific audio/automation connection without affecting others.
+   * Disconnect a specific audio connection without affecting others.
    */
   private disconnectConnection(conn: GraphConnection): void {
-    if (conn.kind !== "audio" && conn.kind !== "automation") return;
+    if (!this.isAudioKind(conn.kind)) return;
 
     const from = this.audioNodes.get(conn.from.nodeId);
     const to = this.audioNodes.get(conn.to.nodeId);
     if (!from || !to) return;
 
-    const output = from.getAudioOutput?.(conn.from.portId);
-    const input = to.getAudioInput?.(conn.to.portId);
-    if (output && input) {
-      try {
-        output.disconnect(input as AudioNode);
-      } catch {
-        // Connection may not exist, ignore
+    const outputs = from.getAudioOutputs?.(conn.from.portId) ?? [];
+    const inputs = to.getAudioInputs?.(conn.to.portId) ?? [];
+
+    // Disconnect all channel connections
+    for (const output of outputs) {
+      for (const input of inputs) {
+        try {
+          output.disconnect(input as AudioNode);
+        } catch {
+          // Connection may not exist, ignore
+        }
       }
     }
   }
@@ -270,13 +287,15 @@ export class AudioEngine {
         existing?.onRemove?.();
         this.audioNodes.set(node.id, factory.create(ctx, node.id));
       }
-      this.audioNodes.get(node.id)?.updateState(node.state as any);
+      const instance = this.audioNodes.get(node.id);
+      instance?.updateState(node.state as any);
+      instance?.setGraphRef?.(graph);
     }
 
-    // Build set of desired audio/automation connections
+    // Build set of desired audio/cv/pitch connections
     const desiredConnections = new Map<string, GraphConnection>();
     for (const conn of graph.connections) {
-      if (conn.kind !== "audio" && conn.kind !== "automation") continue;
+      if (!this.isAudioKind(conn.kind)) continue;
       desiredConnections.set(connectionKey(conn), conn);
     }
 
@@ -288,18 +307,38 @@ export class AudioEngine {
       }
     }
 
-    // Connect new connections
+    // Connect new connections with N:M channel handling
     for (const [key, conn] of desiredConnections) {
       if (this.activeConnections.has(key)) continue;
       const from = this.audioNodes.get(conn.from.nodeId);
       const to = this.audioNodes.get(conn.to.nodeId);
       if (!from || !to) continue;
-      const out = from.getAudioOutput?.(conn.from.portId);
-      const input = to.getAudioInput?.(conn.to.portId);
-      if (out && input) {
-        out.connect(input as AudioNode);
-        this.activeConnections.set(key, conn);
+
+      const outputs = from.getAudioOutputs?.(conn.from.portId) ?? [];
+      const inputs = to.getAudioInputs?.(conn.to.portId) ?? [];
+
+      if (outputs.length === 0 || inputs.length === 0) continue;
+
+      // N:M channel connection logic
+      if (inputs.length === 1) {
+        // Many-to-one: all sources sum into single destination (Web Audio behavior)
+        for (const output of outputs) {
+          output.connect(inputs[0] as AudioNode);
+        }
+      } else if (outputs.length === 1) {
+        // One-to-many: single source fans out to all destinations
+        for (const input of inputs) {
+          outputs[0].connect(input as AudioNode);
+        }
+      } else {
+        // Many-to-many: 1:1 mapping, excess channels dropped or unfilled
+        const connectCount = Math.min(outputs.length, inputs.length);
+        for (let i = 0; i < connectCount; i++) {
+          outputs[i].connect(inputs[i] as AudioNode);
+        }
       }
+
+      this.activeConnections.set(key, conn);
     }
 
     // Build current port connections per node and notify if changed
@@ -361,38 +400,68 @@ export class AudioEngine {
     if (!ctx) return;
 
     const seen = new Set<string>();
-    const queue: Array<{ nodeId: NodeId; portId: string | null }> = [];
+    const queue: Array<{ nodeId: NodeId; portId: string | null; event: MidiEvent }> = [];
 
-    const edgeKind = event.type === "cc" ? "cc" : "midi";
+    // MIDI events route through 'midi' edges
     const starts = graph.connections.filter(
-      (c) => c.kind === edgeKind && c.from.nodeId === sourceNodeId
+      (c) => c.kind === "midi" && c.from.nodeId === sourceNodeId
     );
     for (const conn of starts)
-      queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
+      queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId, event });
 
     while (queue.length > 0) {
       const current = queue.shift()!;
-      const key = `${current.nodeId}:${current.portId ?? ""}`;
+      // Build a unique key for deduplication - include note number for note events
+      const evt = current.event;
+      let eventKey: string;
+      if (evt.type === "noteOn" || evt.type === "noteOff") {
+        eventKey = `${evt.type}:${evt.note}:${evt.atMs}`;
+      } else if (evt.type === "cc") {
+        eventKey = `${evt.type}:${evt.controller}:${evt.value}:${evt.atMs}`;
+      } else {
+        eventKey = `${(evt as MidiEvent).type}:${(evt as MidiEvent).atMs}`;
+      }
+      const key = `${current.nodeId}:${current.portId ?? ""}:${eventKey}`;
       if (seen.has(key)) continue;
       seen.add(key);
 
       const node = graph.nodes.find((n) => n.id === current.nodeId);
-      if (node) {
-        const runtime = this.audioNodes.get(node.id);
-        const override = stateOverrides?.get(node.id);
-        const effectiveState =
-          override && Object.keys(override).length > 0
-            ? ({ ...node.state, ...override } as any)
-            : (node.state as any);
-        runtime?.handleMidi?.(event, current.portId, effectiveState);
-        this.emitMidiDispatch(current.nodeId, event);
+      if (!node) continue;
+
+      const runtime = this.audioNodes.get(node.id);
+      const override = stateOverrides?.get(node.id);
+      const effectiveState =
+        override && Object.keys(override).length > 0
+          ? ({ ...node.state, ...override } as any)
+          : (node.state as any);
+
+      const result = runtime?.handleMidi?.(current.event, current.portId, effectiveState);
+      this.emitMidiDispatch(current.nodeId, current.event);
+
+      // Determine which events to route downstream
+      const eventsToRoute: MidiEvent[] = [];
+
+      if (result?.consumed !== true) {
+        // Original event passes through
+        eventsToRoute.push(current.event);
       }
 
-      const outgoing = graph.connections.filter(
-        (c) => c.kind === edgeKind && c.from.nodeId === current.nodeId
-      );
-      for (const conn of outgoing)
-        queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
+      if (result?.emit) {
+        // Node emitted new events
+        eventsToRoute.push(...result.emit);
+      }
+
+      // Route events to outgoing connections
+      if (eventsToRoute.length > 0) {
+        const outgoing = graph.connections.filter(
+          (c) => c.kind === "midi" && c.from.nodeId === current.nodeId
+        );
+        for (const conn of outgoing) {
+          for (const evt of eventsToRoute) {
+            queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId, event: evt });
+          }
+        }
+      }
     }
   }
 
@@ -414,6 +483,51 @@ export class AudioEngine {
     const runtime = this.audioNodes.get(node.id);
     runtime?.handleMidi?.(event, null, node.state as any);
     this.emitMidiDispatch(targetNodeId, event);
+  }
+
+  /**
+   * Dispatch a voice event (gate/trigger) from a source node through the graph.
+   * Events are routed via BFS through gate/trigger edges.
+   * Called directly by nodes when they emit events.
+   */
+  dispatchEvent(
+    graph: GraphState,
+    sourceNodeId: NodeId,
+    sourcePortId: string,
+    event: VoiceEvent
+  ): void {
+    const ctx = this.audioContext;
+    if (!ctx) return;
+
+    const seen = new Set<string>();
+    const queue: Array<{ nodeId: NodeId; portId: string }> = [];
+
+    // Find connections from the source port (gate or trigger edges)
+    const starts = graph.connections.filter(
+      (c) =>
+        this.isEventKind(c.kind) &&
+        c.from.nodeId === sourceNodeId &&
+        c.from.portId === sourcePortId
+    );
+    for (const conn of starts)
+      queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      const key = `${current.nodeId}:${current.portId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+
+      const runtime = this.audioNodes.get(current.nodeId);
+      runtime?.handleEvent?.(current.portId, event);
+
+      // Continue routing through outgoing event edges from this node
+      const outgoing = graph.connections.filter(
+        (c) => this.isEventKind(c.kind) && c.from.nodeId === current.nodeId
+      );
+      for (const conn of outgoing)
+        queue.push({ nodeId: conn.to.nodeId, portId: conn.to.portId });
+    }
   }
 
   private teardownNode(nodeId: NodeId) {

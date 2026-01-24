@@ -88,13 +88,13 @@ function createReverbRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInsta
         convolver.buffer = lastIr;
       }
     },
-    getAudioInput: (portId) => {
-      if (portId === "audio_in") return input;
-      return null;
+    getAudioInputs: (portId) => {
+      if (portId === "audio_in") return [input];
+      return [];
     },
-    getAudioOutput: (portId) => {
-      if (portId === "audio_out") return meter;
-      return null;
+    getAudioOutputs: (portId) => {
+      if (portId === "audio_out") return [meter];
+      return [];
     },
     onRemove: () => {
       meter.disconnect();
