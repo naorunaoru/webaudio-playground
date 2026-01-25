@@ -1,6 +1,6 @@
 import type { AudioGraphContext } from "@audio/context";
 import type { GraphNode, GraphState, MidiEvent, NodeId, VoiceEvent } from "@graph/types";
-import type { AudioNodeFactory } from "./audioRuntime";
+import type { AudioNodeFactory, AudioNodeInstance } from "./audioRuntime";
 import type { NodeDefinition } from "./graphNodeDefinition";
 
 /** Callback to dispatch voice events (gate/trigger) from a node through the graph. */
@@ -25,6 +25,8 @@ export type AudioNodeServices = Readonly<{
   dispatchEvent: DispatchEventFn;
   /** Dispatch MIDI events to downstream nodes through the graph. */
   dispatchMidi: DispatchMidiFn;
+  /** Look up an audio node instance by ID (for allocator discovery). */
+  getAudioNode: (nodeId: NodeId) => AudioNodeInstance | undefined;
 }>;
 
 export type NodeModule<TNode extends GraphNode = GraphNode> = Readonly<{

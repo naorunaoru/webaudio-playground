@@ -11,7 +11,7 @@ import {
   findClosestSegment,
 } from "./geometry";
 import { applyHandleDrag, applyShapeDrag } from "./handles";
-import { drawEnvelope } from "./drawing";
+import { drawEnvelope, type Playhead } from "./drawing";
 
 export type { EnvelopeEditorProps } from "./types";
 
@@ -48,21 +48,36 @@ export function EnvelopeEditor({
       if (canvas.height !== height) canvas.height = height;
 
       const runtimeState = getRuntimeState?.();
-      let playhead = null;
+      const playheads: Playhead[] = [];
 
-      if (runtimeState && runtimeState.phase !== "idle") {
+      if (runtimeState) {
         const timing: EnvelopeTiming = {
           attackSec: Math.max(0, currentEnv.attackMs) / 1000,
           decaySec: Math.max(0, currentEnv.decayMs) / 1000,
           releaseSec: Math.max(0, currentEnv.releaseMs) / 1000,
         };
-        playhead = {
-          ms: phaseToMs(runtimeState.phase, runtimeState.phaseProgress, timing),
-          level: runtimeState.currentLevel,
-        };
+
+        // Use the voices array if available, otherwise fall back to legacy single-voice state
+        const voices = runtimeState.voices ?? [];
+        if (voices.length > 0) {
+          for (const voice of voices) {
+            if (voice.phase !== "idle") {
+              playheads.push({
+                ms: phaseToMs(voice.phase, voice.phaseProgress, timing),
+                level: voice.currentLevel,
+              });
+            }
+          }
+        } else if (runtimeState.phase !== "idle") {
+          // Legacy fallback for backwards compatibility
+          playheads.push({
+            ms: phaseToMs(runtimeState.phase, runtimeState.phaseProgress, timing),
+            level: runtimeState.currentLevel,
+          });
+        }
       }
 
-      drawEnvelope(ctx, width, height, dpr, currentEnv, activeHandleRef.current, playhead);
+      drawEnvelope(ctx, width, height, dpr, currentEnv, activeHandleRef.current, playheads);
       raf = requestAnimationFrame(draw);
     };
 

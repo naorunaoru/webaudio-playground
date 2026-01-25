@@ -1,8 +1,5 @@
-import type { GraphNode, NodeId, VoiceEvent } from "@graph/types";
-import type {
-  AudioNodeFactory,
-  AudioNodeInstance,
-} from "@/types/audioRuntime";
+import type { GraphNode, GraphState, NodeId, VoiceEvent } from "@graph/types";
+import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
 import type { AudioNodeServices } from "@/types/nodeModule";
 import {
   shapedT,
@@ -11,18 +8,30 @@ import {
   type EnvelopeTiming,
 } from "@utils/envelope";
 import { clamp01 } from "@utils/math";
+import { findAllocator, type AllocatorLookupResult } from "@audio/allocatorDiscovery";
 import envelopeProcessorUrl from "./processor.ts?worklet";
 
 type EnvelopeGraphNode = Extract<GraphNode, { type: "envelope" }>;
 type EnvelopeNodeState = EnvelopeGraphNode["state"];
 
-const MAX_VOICES = 8;
+/** Pre-allocated upper limit for voices. */
+const MAX_VOICES = 32;
 
-export type EnvelopeRuntimeState = {
+/** Runtime state for a single voice's envelope. */
+export type VoiceRuntimeState = {
+  voiceIndex: number;
   currentLevel: number;
   phase: EnvelopePhase;
   phaseProgress: number;
-  activeNotes: number[];
+};
+
+export type EnvelopeRuntimeState = {
+  /** All active voices (non-idle). */
+  voices: VoiceRuntimeState[];
+  /** Legacy: state for voice 0 (for backwards compatibility). */
+  currentLevel: number;
+  phase: EnvelopePhase;
+  phaseProgress: number;
 };
 
 type VoiceState = {
@@ -61,8 +70,18 @@ function ensureEnvelopeWorkletModuleLoaded(ctx: AudioContext): Promise<void> {
 
 function createEnvelopeRuntime(
   ctx: AudioContext,
-  _nodeId: NodeId
+  nodeId: NodeId,
+  getAudioNode: AudioNodeServices["getAudioNode"]
 ): AudioNodeInstance<EnvelopeGraphNode> {
+  // Consumer ID for allocator hold/release
+  const consumerId = `${nodeId}:gate_in`;
+
+  // Track which allocator each voice came from (for release routing)
+  const voiceToSource = new Map<number, AllocatorLookupResult>();
+
+  // Current graph reference for allocator discovery
+  let graphRef: GraphState | null = null;
+
   // Voice states for UI visualization
   const voiceStates: VoiceState[] = [];
   for (let i = 0; i < MAX_VOICES; i++) {
@@ -103,6 +122,14 @@ function createEnvelopeRuntime(
         channelInterpretation: "discrete",
       });
 
+      // Listen for releaseComplete messages from worklet
+      worklet.port.onmessage = (event: MessageEvent) => {
+        const data = event.data;
+        if (data.type === "releaseComplete") {
+          handleReleaseComplete(data.voice);
+        }
+      };
+
       // Send initial params
       if (cachedEnv) {
         worklet.port.postMessage({
@@ -139,6 +166,33 @@ function createEnvelopeRuntime(
   // Create worklet immediately
   void createWorklet();
 
+  /**
+   * Called when worklet reports a voice's release phase is complete.
+   * Release the hold on the upstream allocator.
+   */
+  function handleReleaseComplete(voiceIdx: number) {
+    const sourceInfo = voiceToSource.get(voiceIdx);
+    if (!sourceInfo) return;
+
+    // Map our voice index to the allocator's voice index
+    const upstreamVoice = sourceInfo.mapping.toUpstream(voiceIdx);
+    sourceInfo.allocator.release(upstreamVoice, consumerId);
+
+    // Clear the mapping for this voice
+    voiceToSource.delete(voiceIdx);
+  }
+
+  /**
+   * Release all holds - called on disconnect or removal.
+   */
+  function releaseAllHolds() {
+    for (const [voiceIdx, sourceInfo] of voiceToSource) {
+      const upstreamVoice = sourceInfo.mapping.toUpstream(voiceIdx);
+      sourceInfo.allocator.release(upstreamVoice, consumerId);
+    }
+    voiceToSource.clear();
+  }
+
   function levelAtElapsedSec(
     voiceIdx: number,
     elapsedSec: number,
@@ -174,7 +228,7 @@ function createEnvelopeRuntime(
     const s = clamp01(env.sustain);
     const sustainLevel = peak * s;
 
-    voice.noteOnStartLevel = env.retrigger ? 0 : (voice.gateOn ? voice.noteOnSustainLevel : 0);
+    voice.noteOnStartLevel = env.retrigger ? 0 : voice.gateOn ? voice.noteOnSustainLevel : 0;
     voice.gateOn = true;
     voice.noteOnAtSec = now;
     voice.noteOnPeak = peak;
@@ -207,17 +261,36 @@ function createEnvelopeRuntime(
     worklet?.port.postMessage({ type: "gate", voice: voiceIdx, state: "off" });
   }
 
-  function computeRuntimeState(): EnvelopeRuntimeState {
-    // Return state for voice 0 (for UI visualization)
-    const now = ctx.currentTime;
-    const voice = voiceStates[0];
-    const activeVoices = voiceStates.filter((v) => v.gateOn).length;
+  function applyForceRelease(voiceIdx: number) {
+    const voice = voiceStates[voiceIdx];
 
+    // Update local state
+    voice.gateOn = false;
+    voice.releaseStartAtSec = ctx.currentTime;
+    voice.releaseStartLevel = 0; // Will fast-fade in worklet
+    voice.releaseDurationSec = 0.005; // 5ms fast fade
+    voice.noteOnAtSec = null;
+
+    // Send force release to worklet (fast fade)
+    worklet?.port.postMessage({ type: "forceRelease", voice: voiceIdx });
+
+    // Don't call allocator.release() here - the allocator already cleared holds
+    // when it dispatched the force-release event
+    voiceToSource.delete(voiceIdx);
+  }
+
+  function computeVoiceRuntimeState(
+    voiceIdx: number,
+    now: number,
+    env: EnvelopeNodeState["env"] | null
+  ): VoiceRuntimeState | null {
+    const voice = voiceStates[voiceIdx];
+
+    // Skip idle voices
     if (voice.noteOnAtSec == null && voice.releaseStartAtSec == null) {
-      return { currentLevel: 0, phase: "idle", phaseProgress: 0, activeNotes: [] };
+      return null;
     }
 
-    const env = cachedEnv;
     const timing: EnvelopeTiming = {
       attackSec: Math.max(0, env?.attackMs ?? 0) / 1000,
       decaySec: Math.max(0, env?.decayMs ?? 0) / 1000,
@@ -230,7 +303,7 @@ function createEnvelopeRuntime(
 
       if (phase === "idle") {
         voice.releaseStartAtSec = null;
-        return { currentLevel: 0, phase: "idle", phaseProgress: 0, activeNotes: [] };
+        return null;
       }
 
       const level = env
@@ -238,10 +311,10 @@ function createEnvelopeRuntime(
         : voice.releaseStartLevel * (1 - progress);
 
       return {
+        voiceIndex: voiceIdx,
         currentLevel: Math.max(0, level),
         phase,
         phaseProgress: progress,
-        activeNotes: Array(activeVoices).fill(0),
       };
     }
 
@@ -249,16 +322,48 @@ function createEnvelopeRuntime(
       const elapsed = now - voice.noteOnAtSec;
       const { phase, progress } = getPhaseAtTime(elapsed, timing, false);
       const level =
-        phase === "sustain" ? voice.noteOnSustainLevel : levelAtElapsedSec(0, elapsed, env);
+        phase === "sustain" ? voice.noteOnSustainLevel : levelAtElapsedSec(voiceIdx, elapsed, env);
       return {
+        voiceIndex: voiceIdx,
         currentLevel: Math.max(0, level),
         phase,
         phaseProgress: progress,
-        activeNotes: Array(activeVoices).fill(0),
       };
     }
 
-    return { currentLevel: 0, phase: "idle", phaseProgress: 0, activeNotes: [] };
+    return null;
+  }
+
+  function computeRuntimeState(): EnvelopeRuntimeState {
+    const now = ctx.currentTime;
+    const env = cachedEnv;
+
+    // Collect all active voice states
+    const activeVoices: VoiceRuntimeState[] = [];
+    for (let i = 0; i < MAX_VOICES; i++) {
+      const voiceState = computeVoiceRuntimeState(i, now, env);
+      if (voiceState) {
+        activeVoices.push(voiceState);
+      }
+    }
+
+    // Legacy: return voice 0 state for backwards compatibility
+    const voice0 = activeVoices.find((v) => v.voiceIndex === 0) ?? activeVoices[0];
+    if (voice0) {
+      return {
+        voices: activeVoices,
+        currentLevel: voice0.currentLevel,
+        phase: voice0.phase,
+        phaseProgress: voice0.phaseProgress,
+      };
+    }
+
+    return {
+      voices: [],
+      currentLevel: 0,
+      phase: "idle",
+      phaseProgress: 0,
+    };
   }
 
   return {
@@ -279,25 +384,60 @@ function createEnvelopeRuntime(
         },
       });
     },
+    setGraphRef: (graph) => {
+      graphRef = graph;
+    },
     getAudioOutputs: (portId) => {
       if (portId === "env_out") return envOutputs;
       return [];
     },
     handleEvent: (portId, event: VoiceEvent) => {
       if (portId !== "gate_in") return;
-      if (event.type !== "gate") return;
       if (!cachedEnv) return;
 
       const voiceIdx = event.voice;
       if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) return;
 
-      if (event.state === "on") {
-        applyGateOn(voiceIdx, cachedEnv);
-      } else {
-        applyGateOff(voiceIdx, cachedEnv);
+      if (event.type === "gate") {
+        if (event.state === "on") {
+          // Find upstream allocator and hold the voice
+          if (graphRef) {
+            const sourceInfo = findAllocator(graphRef, nodeId, "gate_in", getAudioNode);
+            if (sourceInfo) {
+              const upstreamVoice = sourceInfo.mapping.toUpstream(voiceIdx);
+              sourceInfo.allocator.hold(upstreamVoice, consumerId);
+              voiceToSource.set(voiceIdx, sourceInfo);
+            }
+          }
+          applyGateOn(voiceIdx, cachedEnv);
+        } else {
+          applyGateOff(voiceIdx, cachedEnv);
+        }
+      } else if (event.type === "force-release") {
+        applyForceRelease(voiceIdx);
+      }
+    },
+    onConnectionsChanged: ({ inputs }) => {
+      // If gate input is disconnected, release all holds
+      if (!inputs.has("gate_in") && voiceToSource.size > 0) {
+        releaseAllHolds();
+        // Send fast-fade to worklet for any active voices
+        worklet?.port.postMessage({ type: "releaseAll" });
+        // Reset voice states
+        for (const voice of voiceStates) {
+          if (voice.gateOn || voice.releaseStartAtSec !== null) {
+            voice.gateOn = false;
+            voice.releaseStartAtSec = ctx.currentTime;
+            voice.releaseStartLevel = 0;
+            voice.releaseDurationSec = 0.005;
+            voice.noteOnAtSec = null;
+          }
+        }
       }
     },
     onRemove: () => {
+      // Release all holds before destruction
+      releaseAllHolds();
       destroyWorklet();
       try {
         outputSplitter.disconnect();
@@ -313,10 +453,10 @@ function createEnvelopeRuntime(
 }
 
 export function envelopeAudioFactory(
-  _services: AudioNodeServices
+  services: AudioNodeServices
 ): AudioNodeFactory<EnvelopeGraphNode> {
   return {
     type: "envelope",
-    create: (ctx, nodeId) => createEnvelopeRuntime(ctx, nodeId),
+    create: (ctx, nodeId) => createEnvelopeRuntime(ctx, nodeId, services.getAudioNode),
   };
 }

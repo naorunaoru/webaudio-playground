@@ -566,9 +566,9 @@ Phases 7 and 8 depend on Phase 5.
 - [x] Architecture documented (voice-propagation.md, voice-count.md)
 - [x] Phase 1: Core VoiceAllocator — complete
 - [x] Phase 2: VoiceMapping — complete
-- [ ] Phase 3: Allocator Discovery — not started
+- [x] Phase 3: Allocator Discovery — complete
 - [x] Phase 4: MIDI-to-CV — complete
-- [ ] Phase 5: Envelope — not started
+- [x] Phase 5: Envelope — complete
 - [x] Phase 6: Event Types — complete
 - [ ] Phase 7: Engine Integration — not started
 - [ ] Phase 8: Voice Count Integration — not started

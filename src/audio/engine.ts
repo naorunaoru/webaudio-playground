@@ -195,6 +195,7 @@ export class AudioEngine {
           graphContext: this.rootContext,
           dispatchEvent: this.dispatchEvent.bind(this),
           dispatchMidi: this.dispatchMidi.bind(this),
+          getAudioNode: (nodeId: string) => this.audioNodes.get(nodeId),
         }),
         ...this.factoryOverrides,
       };
