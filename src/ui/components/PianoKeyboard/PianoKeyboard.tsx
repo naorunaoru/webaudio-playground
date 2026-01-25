@@ -56,7 +56,6 @@ export function PianoKeyboard({
         note,
         velocity,
         channel,
-        atMs: performance.now(),
       });
     },
     [targetNodeId, dispatchMidiToNode, channel]
@@ -80,7 +79,6 @@ export function PianoKeyboard({
         type: "noteOff",
         note,
         channel,
-        atMs: performance.now(),
       });
     },
     [targetNodeId, dispatchMidiToNode, channel]
@@ -90,7 +88,10 @@ export function PianoKeyboard({
   const calculateVelocity = useCallback(
     (e: React.PointerEvent<HTMLButtonElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
-      const relativeY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      const relativeY = Math.max(
+        0,
+        Math.min(1, (e.clientY - rect.top) / rect.height)
+      );
       return Math.round(minVelocity + relativeY * (maxVelocity - minVelocity));
     },
     [minVelocity, maxVelocity]
@@ -214,7 +215,9 @@ export function PianoKeyboard({
             key={note}
             type="button"
             className={styles.blackKey}
-            style={{ left: `calc(${position} * (var(--white-key-width) + var(--white-key-gap)) + var(--white-key-width) * 0.65)` }}
+            style={{
+              left: `calc(${position} * (var(--white-key-width) + var(--white-key-gap)) + var(--white-key-width) * 0.65)`,
+            }}
             data-active={isKeyActive(note)}
             disabled={disabled}
             onPointerDown={handlePointerDown(note)}
@@ -225,11 +228,7 @@ export function PianoKeyboard({
           />
         ))}
       </div>
-      {disabled && (
-        <div className={styles.disabledOverlay}>
-          Select a node
-        </div>
-      )}
+      {disabled && <div className={styles.disabledOverlay}>Select a node</div>}
     </div>
   );
 }

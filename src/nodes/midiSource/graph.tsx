@@ -58,13 +58,11 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
               );
               setIsHeld(true);
 
-              const atMs = performance.now();
               await onEmitMidi?.(node.id, {
                 type: "noteOn",
                 note: node.state.note,
                 velocity: node.state.velocity,
                 channel: node.state.channel,
-                atMs,
               });
             }}
             onPointerUp={async (e) => {
@@ -75,36 +73,30 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
               );
               setIsHeld(false);
 
-              const atMs = performance.now();
               await onEmitMidi?.(node.id, {
                 type: "noteOff",
                 note: node.state.note,
                 channel: node.state.channel,
-                atMs,
               });
             }}
             onPointerCancel={() => {
               if (activePointerIdRef.current == null) return;
               activePointerIdRef.current = null;
               setIsHeld(false);
-              const atMs = performance.now();
               void onEmitMidi?.(node.id, {
                 type: "noteOff",
                 note: node.state.note,
                 channel: node.state.channel,
-                atMs,
               });
             }}
             onPointerLeave={() => {
               if (activePointerIdRef.current == null) return;
               activePointerIdRef.current = null;
               setIsHeld(false);
-              const atMs = performance.now();
               void onEmitMidi?.(node.id, {
                 type: "noteOff",
                 note: node.state.note,
                 channel: node.state.channel,
-                atMs,
               });
             }}
           >

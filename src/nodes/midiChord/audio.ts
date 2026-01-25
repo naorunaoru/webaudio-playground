@@ -53,7 +53,6 @@ function createMidiChordRuntime(
             note: event.note + interval,
             velocity: event.velocity,
             channel: event.channel,
-            atMs: event.atMs,
           }));
           return { consumed: true, emit: chordNotes };
         }
@@ -64,7 +63,6 @@ function createMidiChordRuntime(
           note: event.note + orderedIntervals[0],
           velocity: event.velocity,
           channel: event.channel,
-          atMs: event.atMs,
         };
 
         // Schedule remaining notes
@@ -74,14 +72,12 @@ function createMidiChordRuntime(
           const timeout = setTimeout(() => {
             pendingTimeouts.delete(timeout);
             if (!graphRef) return;
-            const noteEvent: MidiEvent = {
+            dispatchMidi(graphRef, nodeId, {
               type: "noteOn",
               note: event.note + interval,
               velocity: event.velocity,
               channel: event.channel,
-              atMs: performance.now(),
-            };
-            dispatchMidi(graphRef, nodeId, noteEvent);
+            });
           }, delay);
           pendingTimeouts.add(timeout);
         }
@@ -96,7 +92,6 @@ function createMidiChordRuntime(
             type: "noteOff" as const,
             note: event.note + interval,
             channel: event.channel,
-            atMs: event.atMs,
           }));
           return { consumed: true, emit: chordNotes };
         }
@@ -106,7 +101,6 @@ function createMidiChordRuntime(
           type: "noteOff",
           note: event.note + orderedIntervals[0],
           channel: event.channel,
-          atMs: event.atMs,
         };
 
         // Schedule remaining note-offs
@@ -116,13 +110,11 @@ function createMidiChordRuntime(
           const timeout = setTimeout(() => {
             pendingTimeouts.delete(timeout);
             if (!graphRef) return;
-            const noteEvent: MidiEvent = {
+            dispatchMidi(graphRef, nodeId, {
               type: "noteOff",
               note: event.note + interval,
               channel: event.channel,
-              atMs: performance.now(),
-            };
-            dispatchMidi(graphRef, nodeId, noteEvent);
+            });
           }, delay);
           pendingTimeouts.add(timeout);
         }

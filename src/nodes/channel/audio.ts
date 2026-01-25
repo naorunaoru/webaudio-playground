@@ -19,7 +19,6 @@ function parseMidiMessage(
   const statusByte = data[0];
   const channel = (statusByte & 0x0f) + 1; // MIDI channels are 1-16
   const messageType = statusByte & 0xf0;
-  const atMs = performance.now();
 
   // Filter by channel if set
   if (midiChannel !== null && channel !== midiChannel) {
@@ -31,16 +30,16 @@ function parseMidiMessage(
       if (data.length >= 3) {
         const velocity = data[2];
         if (velocity > 0) {
-          return { type: "noteOn", note: data[1], velocity, channel, atMs };
+          return { type: "noteOn", note: data[1], velocity, channel };
         } else {
           // Note On with velocity 0 is Note Off
-          return { type: "noteOff", note: data[1], channel, atMs };
+          return { type: "noteOff", note: data[1], channel };
         }
       }
       break;
     case 0x80: // Note Off
       if (data.length >= 3) {
-        return { type: "noteOff", note: data[1], channel, atMs };
+        return { type: "noteOff", note: data[1], channel };
       }
       break;
     case 0xb0: // Control Change
@@ -50,7 +49,6 @@ function parseMidiMessage(
           controller: data[1],
           value: data[2],
           channel,
-          atMs,
         };
       }
       break;
@@ -59,12 +57,12 @@ function parseMidiMessage(
         // 14-bit value: LSB (data[1]) + MSB (data[2])
         // Center is 8192, range is 0-16383, we convert to -8192..8191
         const raw = data[1] | (data[2] << 7);
-        return { type: "pitchBend", value: raw - 8192, channel, atMs };
+        return { type: "pitchBend", value: raw - 8192, channel };
       }
       break;
     case 0xd0: // Channel Pressure (Aftertouch)
       if (data.length >= 2) {
-        return { type: "aftertouch", value: data[1], channel, atMs };
+        return { type: "aftertouch", value: data[1], channel };
       }
       break;
     case 0xa0: // Polyphonic Key Pressure
@@ -74,7 +72,6 @@ function parseMidiMessage(
           note: data[1],
           value: data[2],
           channel,
-          atMs,
         };
       }
       break;

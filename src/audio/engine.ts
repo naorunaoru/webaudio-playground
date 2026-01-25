@@ -4,6 +4,7 @@ import type {
   GraphState,
   MidiEvent,
   NodeId,
+  Timed,
   VoiceEvent,
 } from "@graph/types";
 import {
@@ -398,14 +399,17 @@ export class AudioEngine {
   dispatchMidi(
     graph: GraphState,
     sourceNodeId: NodeId,
-    event: MidiEvent,
+    eventInput: MidiEvent,
     stateOverrides?: ReadonlyMap<NodeId, Record<string, unknown>>
   ): void {
     const ctx = this.audioContext;
     if (!ctx) return;
 
+    // Add timestamp for deduplication
+    const event: Timed<MidiEvent> = { ...eventInput, atMs: performance.now() };
+
     const seen = new Set<string>();
-    const queue: Array<{ nodeId: NodeId; portId: string | null; event: MidiEvent }> = [];
+    const queue: Array<{ nodeId: NodeId; portId: string | null; event: Timed<MidiEvent> }> = [];
 
     // MIDI events route through 'midi' edges
     const starts = graph.connections.filter(
@@ -424,7 +428,7 @@ export class AudioEngine {
       } else if (evt.type === "cc") {
         eventKey = `${evt.type}:${evt.controller}:${evt.value}:${evt.atMs}`;
       } else {
-        eventKey = `${(evt as MidiEvent).type}:${(evt as MidiEvent).atMs}`;
+        eventKey = `${evt.type}:${evt.atMs}`;
       }
       const key = `${current.nodeId}:${current.portId ?? ""}:${eventKey}`;
       if (seen.has(key)) continue;
@@ -444,7 +448,7 @@ export class AudioEngine {
       this.emitMidiDispatch(current.nodeId, current.event);
 
       // Determine which events to route downstream
-      const eventsToRoute: MidiEvent[] = [];
+      const eventsToRoute: Timed<MidiEvent>[] = [];
 
       if (result?.consumed !== true) {
         // Original event passes through
@@ -452,8 +456,11 @@ export class AudioEngine {
       }
 
       if (result?.emit) {
-        // Node emitted new events
-        eventsToRoute.push(...result.emit);
+        // Node emitted new events - add timestamps
+        const now = performance.now();
+        for (const emitted of result.emit) {
+          eventsToRoute.push({ ...emitted, atMs: now });
+        }
       }
 
       // Route events to outgoing connections
@@ -477,13 +484,16 @@ export class AudioEngine {
   dispatchMidiDirect(
     graph: GraphState,
     targetNodeId: NodeId,
-    event: MidiEvent
+    eventInput: MidiEvent
   ): void {
     const ctx = this.audioContext;
     if (!ctx) return;
 
     const node = graph.nodes.find((n) => n.id === targetNodeId);
     if (!node) return;
+
+    // Add timestamp for deduplication
+    const event: Timed<MidiEvent> = { ...eventInput, atMs: performance.now() };
 
     const runtime = this.audioNodes.get(node.id);
     runtime?.handleMidi?.(event, null, node.state as any);
