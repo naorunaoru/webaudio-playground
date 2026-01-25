@@ -78,6 +78,7 @@ export type MidiEvent =
       type: "noteOff";
       note: number;
       channel: number;
+      releaseVelocity?: number; // 0..127 (MPE lift)
     }
   | {
       type: "cc";

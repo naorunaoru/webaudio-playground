@@ -1,7 +1,11 @@
 import type { GraphNode, GraphState, MidiEvent, NodeId } from "@graph/types";
 import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
 import type { AudioNodeServices, DispatchMidiFn } from "@/types/nodeModule";
-import type { ChannelConnectionStatus, ChannelRuntimeState, ChannelState } from "./types";
+import type {
+  ChannelConnectionStatus,
+  ChannelRuntimeState,
+  ChannelState,
+} from "./types";
 
 type ChannelGraphNode = Extract<GraphNode, { type: "channel" }>;
 
@@ -39,7 +43,12 @@ function parseMidiMessage(
       break;
     case 0x80: // Note Off
       if (data.length >= 3) {
-        return { type: "noteOff", note: data[1], channel };
+        return {
+          type: "noteOff",
+          note: data[1],
+          releaseVelocity: data[2],
+          channel,
+        };
       }
       break;
     case 0xb0: // Control Change

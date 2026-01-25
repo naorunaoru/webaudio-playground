@@ -67,6 +67,7 @@ function createMidiToCvRuntime(
   const velocitySources: ConstantSourceNode[] = [];
   const pressureSources: ConstantSourceNode[] = [];
   const slideSources: ConstantSourceNode[] = [];
+  const liftSources: ConstantSourceNode[] = [];
 
   function ensureAudioNodes(count: number) {
     // Add new audio nodes if needed
@@ -90,6 +91,11 @@ function createMidiToCvRuntime(
       slide.offset.value = 0; // Semitones offset from base pitch
       slide.start();
       slideSources.push(slide);
+
+      const lift = ctx.createConstantSource();
+      lift.offset.value = 0;
+      lift.start();
+      liftSources.push(lift);
     }
   }
 
@@ -139,11 +145,17 @@ function createMidiToCvRuntime(
     }
   }
 
-  function handleNoteOff(note: number, channel: number) {
+  function handleNoteOff(note: number, channel: number, releaseVelocity?: number) {
     const voiceIdx = noteToVoice.get(note);
     if (voiceIdx === undefined) return;
 
     // Keep pitch CV at current value - envelope release needs it!
+
+    // Update lift CV if release velocity provided (MPE)
+    if (releaseVelocity !== undefined) {
+      const liftCv = releaseVelocity / 127;
+      liftSources[voiceIdx].offset.setValueAtTime(liftCv, ctx.currentTime);
+    }
 
     // Clear note-to-voice and channel-to-voice mappings
     noteToVoice.delete(note);
@@ -220,6 +232,9 @@ function createMidiToCvRuntime(
       if (portId === "slide_out") {
         return slideSources.slice(0, count);
       }
+      if (portId === "lift_out") {
+        return liftSources.slice(0, count);
+      }
       return [];
     },
     handleMidi: (event: MidiEvent, portId) => {
@@ -228,7 +243,7 @@ function createMidiToCvRuntime(
       if (event.type === "noteOn") {
         handleNoteOn(event.note, event.velocity, event.channel);
       } else if (event.type === "noteOff") {
-        handleNoteOff(event.note, event.channel);
+        handleNoteOff(event.note, event.channel, event.releaseVelocity);
       } else if (event.type === "pitchBend") {
         handlePitchBend(event.value, event.channel);
       } else if (event.type === "aftertouch") {
@@ -244,6 +259,7 @@ function createMidiToCvRuntime(
         ...velocitySources,
         ...pressureSources,
         ...slideSources,
+        ...liftSources,
       ];
       for (const source of allSources) {
         try {
@@ -257,6 +273,7 @@ function createMidiToCvRuntime(
       velocitySources.length = 0;
       pressureSources.length = 0;
       slideSources.length = 0;
+      liftSources.length = 0;
     },
     getRuntimeState: () => ({
       activeVoices: [...noteToVoice.values()],
