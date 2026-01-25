@@ -58,6 +58,8 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       setZOrder,
       startBatch,
       endBatch,
+      uiState,
+      setViewportState,
     } = useGraphDoc();
 
     const [status, setStatus] = useState<string | null>(null);
@@ -128,6 +130,51 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       root.addEventListener("scroll", onScroll, { passive: true });
       return () => root.removeEventListener("scroll", onScroll);
     }, []);
+
+    // Save viewport position on scrollend
+    useEffect(() => {
+      const root = rootRef.current;
+      if (!root) return;
+
+      const onScrollEnd = () => {
+        const viewportWidth = root.clientWidth;
+        const viewportHeight = root.clientHeight;
+
+        // Store center of viewport in world coordinates
+        const centerX = root.scrollLeft + viewportWidth / 2;
+        const centerY = root.scrollTop + viewportHeight / 2;
+
+        setViewportState({ centerX, centerY });
+      };
+
+      root.addEventListener("scrollend", onScrollEnd, { passive: true });
+      return () => root.removeEventListener("scrollend", onScrollEnd);
+    }, [setViewportState]);
+
+    // Restore viewport position on initial load
+    const hasRestoredViewport = useRef(false);
+    useEffect(() => {
+      if (hasRestoredViewport.current || !graph || !rootRef.current) return;
+
+      const viewport = uiState.viewport;
+      if (!viewport) {
+        hasRestoredViewport.current = true;
+        return;
+      }
+
+      const { centerX, centerY } = viewport;
+      const viewportWidth = rootRef.current.clientWidth;
+      const viewportHeight = rootRef.current.clientHeight;
+
+      // Convert center coordinates back to scroll position
+      const scrollX = centerX - viewportWidth / 2;
+      const scrollY = centerY - viewportHeight / 2;
+
+      rootRef.current.scrollLeft = Math.max(0, scrollX);
+      rootRef.current.scrollTop = Math.max(0, scrollY);
+
+      hasRestoredViewport.current = true;
+    }, [graph, uiState.viewport]);
 
     // Imperative handle for parent
     useImperativeHandle(

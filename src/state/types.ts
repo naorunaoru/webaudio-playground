@@ -56,6 +56,11 @@ export type DocUiState = {
     a4Hz?: number;
     timeSignature?: [number, number];
   };
+  /** Viewport center position for restoring scroll on reload */
+  viewport?: {
+    centerX: number;
+    centerY: number;
+  };
 };
 
 /**

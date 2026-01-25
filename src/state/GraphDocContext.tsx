@@ -104,6 +104,7 @@ type GraphDocContextValue = {
   uiState: DocUiState;
   setKeyboardState: (state: { visible: boolean; x: number; y: number }) => void;
   setContextState: (state: { tempo?: number; a4Hz?: number; timeSignature?: [number, number] }) => void;
+  setViewportState: (state: { centerX: number; centerY: number }) => void;
 };
 
 const GraphDocContext = createContext<GraphDocContextValue | null>(null);
@@ -575,6 +576,20 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     [handle]
   );
 
+  const setViewportState = useCallback(
+    (state: { centerX: number; centerY: number }) => {
+      if (!handle) return;
+
+      handle.change((doc) => {
+        if (!doc.meta.ui) {
+          doc.meta.ui = {};
+        }
+        doc.meta.ui.viewport = state;
+      });
+    },
+    [handle]
+  );
+
   const uiState: DocUiState = handle?.doc()?.meta.ui ?? {};
 
   // Audio toggle handler
@@ -631,6 +646,7 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     uiState,
     setKeyboardState,
     setContextState,
+    setViewportState,
   };
 
   return (
