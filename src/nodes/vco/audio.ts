@@ -7,7 +7,7 @@ import vcoProcessorUrl from "./processor.ts?worklet";
 
 type VcoGraphNode = Extract<GraphNode, { type: "vco" }>;
 
-const MAX_VOICES = 8;
+const MAX_VOICES = 32;
 
 const workletModuleLoadByContext = new WeakMap<AudioContext, Promise<void>>();
 

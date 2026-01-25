@@ -5,7 +5,7 @@ import { rmsFromAnalyser } from "@utils/audio";
 
 type VcaGraphNode = Extract<GraphNode, { type: "vca" }>;
 
-const MAX_VOICES = 8;
+const MAX_VOICES = 32;
 
 function createVcaRuntime(
   ctx: AudioContext,

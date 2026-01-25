@@ -270,11 +270,9 @@ export class AudioEngine {
     if (!factories) return;
 
     const alive = new Set<NodeId>(graph.nodes.map((n) => n.id));
-    for (const [nodeId] of this.audioNodes) {
-      if (!alive.has(nodeId)) {
-        this.teardownNode(nodeId);
-      }
-    }
+    const toRemove = [...this.audioNodes.keys()].filter(
+      (id) => !alive.has(id)
+    );
 
     this.outputNodeIds = new Set(
       graph.nodes.filter((n) => n.type === "audioOut").map((n) => n.id)
@@ -389,6 +387,12 @@ export class AudioEngine {
       }
     }
     this.connectedPorts = newConnectedPorts;
+
+    // Teardown removed nodes AFTER notifying connection changes
+    // This ensures consumers can release holds on still-alive allocators
+    for (const nodeId of toRemove) {
+      this.teardownNode(nodeId);
+    }
   }
 
   dispatchMidi(

@@ -570,8 +570,8 @@ Phases 7 and 8 depend on Phase 5.
 - [x] Phase 4: MIDI-to-CV — complete
 - [x] Phase 5: Envelope — complete
 - [x] Phase 6: Event Types — complete
-- [ ] Phase 7: Engine Integration — not started
-- [ ] Phase 8: Voice Count Integration — not started
+- [x] Phase 7: Engine Integration — complete (syncGraph reordered to notify before teardown)
+- [x] Phase 8: Voice Count Integration — complete (implemented during Phase 4)
 
 ---
 
