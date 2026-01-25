@@ -87,6 +87,7 @@ const LfoUi: React.FC<NodeUiProps<LfoNode>> = ({
           onChange={(v) => onPatchNode(node.id, { rangeMin: v })}
           min={RANGE_MIN}
           max={RANGE_MAX}
+          step={0.1}
           label="Min"
           format={(v) => v.toFixed(1)}
           onDragStart={startBatch}
@@ -97,6 +98,7 @@ const LfoUi: React.FC<NodeUiProps<LfoNode>> = ({
           onChange={(v) => onPatchNode(node.id, { rangeMax: v })}
           min={RANGE_MIN}
           max={RANGE_MAX}
+          step={0.1}
           label="Max"
           format={(v) => v.toFixed(1)}
           onDragStart={startBatch}
@@ -132,8 +134,14 @@ export const lfoGraph: NodeDefinition<LfoNode> = {
     return {
       waveform: s.waveform ?? d.waveform,
       frequencyHz: Math.max(0.01, Math.min(50, s.frequencyHz ?? d.frequencyHz)),
-      rangeMin: Math.max(RANGE_MIN, Math.min(RANGE_MAX, s.rangeMin ?? d.rangeMin)),
-      rangeMax: Math.max(RANGE_MIN, Math.min(RANGE_MAX, s.rangeMax ?? d.rangeMax)),
+      rangeMin: Math.max(
+        RANGE_MIN,
+        Math.min(RANGE_MAX, s.rangeMin ?? d.rangeMin)
+      ),
+      rangeMax: Math.max(
+        RANGE_MIN,
+        Math.min(RANGE_MAX, s.rangeMax ?? d.rangeMax)
+      ),
       oneShot: s.oneShot ?? d.oneShot,
     };
   },

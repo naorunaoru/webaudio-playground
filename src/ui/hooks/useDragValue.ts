@@ -30,6 +30,10 @@ export interface UseDragValueResult {
   handlePointerDown: (e: React.PointerEvent) => void;
 }
 
+/** Quantize value to nearest step */
+const quantize = (value: number, step: number): number =>
+  Math.round(value / step) * step;
+
 /**
  * Hook for drag-to-change-value interaction.
  * Vertical drag adjusts value, shift key enables fine control.
@@ -40,7 +44,7 @@ export function useDragValue({
   min,
   max,
   mode = "range",
-  step = 1,
+  step,
   sensitivity = 0.005,
   fineSensitivity = 0.001,
   disabled = false,
@@ -74,13 +78,15 @@ export function useDragValue({
 
         if (mode === "step") {
           const sens = moveEvent.shiftKey ? 0.1 : 1;
-          deltaValue = deltaY * step * sens;
+          deltaValue = deltaY * (step ?? 1) * sens;
         } else {
           const sens = moveEvent.shiftKey ? fineSensitivity : sensitivity;
           deltaValue = deltaY * sens * range;
         }
 
-        onChange(clamp(startValue + deltaValue));
+        let newValue = clamp(startValue + deltaValue);
+        if (step) newValue = quantize(newValue, step);
+        onChange(newValue);
       };
 
       const handlePointerUp = () => {

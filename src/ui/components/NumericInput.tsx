@@ -30,7 +30,7 @@ export function NumericInput({
   onChange,
   min,
   max,
-  step = 1,
+  step,
   label,
   disabled = false,
   format,
@@ -88,11 +88,15 @@ export function NumericInput({
   // Clamp value to range
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
 
+  // Quantize value to nearest step (only when step is provided)
+  const quantize = (v: number) =>
+    step !== undefined ? Math.round(v / step) * step : v;
+
   // Commit the edited value
   const commitValue = (inputValue: string) => {
     const parsed = parseValue(inputValue);
     if (!isNaN(parsed)) {
-      onChange(clamp(parsed));
+      onChange(quantize(clamp(parsed)));
     }
     setEditingValue(null);
   };
@@ -129,9 +133,10 @@ export function NumericInput({
       e.currentTarget.blur();
     } else if (!isEditing && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
-      const delta = e.key === "ArrowUp" ? step : -step;
+      const arrowStep = step ?? 1;
+      const delta = e.key === "ArrowUp" ? arrowStep : -arrowStep;
       const fineMultiplier = e.shiftKey ? 0.1 : 1;
-      onChange(clamp(value + delta * fineMultiplier));
+      onChange(quantize(clamp(value + delta * fineMultiplier)));
     }
   };
 

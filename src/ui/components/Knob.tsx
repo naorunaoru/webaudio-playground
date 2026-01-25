@@ -35,6 +35,7 @@ export function Knob({
   onChange,
   min,
   max,
+  step,
   label,
   indicator = "arc",
   disabled = false,
@@ -54,6 +55,7 @@ export function Knob({
     onChange,
     min,
     max,
+    step,
     disabled: disabled || isEditing,
     onDragStart,
     onDragEnd,
@@ -202,6 +204,7 @@ export function Knob({
             onChange={handleEditChange}
             min={min}
             max={max}
+            step={step}
             format={format}
             unit={unit}
             width={56}

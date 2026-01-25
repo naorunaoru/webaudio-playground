@@ -106,7 +106,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
         <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
           <MidiNoteInput
             value={node.state.note}
-            onChange={(v) => onPatchNode(node.id, { note: Math.round(v) })}
+            onChange={(v) => onPatchNode(node.id, { note: v })}
             label="Note"
             width={48}
             onDragStart={startBatch}
@@ -114,7 +114,7 @@ const MidiSourceUi: React.FC<NodeUiProps<MidiSourceNode>> = ({
           />
           <NumericInput
             value={node.state.velocity}
-            onChange={(v) => onPatchNode(node.id, { velocity: Math.round(v) })}
+            onChange={(v) => onPatchNode(node.id, { velocity: v })}
             min={1}
             max={127}
             step={1}

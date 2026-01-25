@@ -82,7 +82,9 @@ type GraphDocContextValue = {
 
   /** Ephemeral mutations (no history) - for transient state like MIDI triggers, playhead */
   patchNodeEphemeral: (nodeId: NodeId, patch: Record<string, unknown>) => void;
-  patchMultipleNodesEphemeral: (patches: Map<NodeId, Record<string, unknown>>) => void;
+  patchMultipleNodesEphemeral: (
+    patches: Map<NodeId, Record<string, unknown>>
+  ) => void;
 
   /** Batch operations for continuous changes (sliders, drags) */
   startBatch: () => void;
@@ -103,7 +105,11 @@ type GraphDocContextValue = {
   /** UI state (persisted but no undo) */
   uiState: DocUiState;
   setKeyboardState: (state: { visible: boolean; x: number; y: number }) => void;
-  setContextState: (state: { tempo?: number; a4Hz?: number; timeSignature?: [number, number] }) => void;
+  setContextState: (state: {
+    tempo?: number;
+    a4Hz?: number;
+    timeSignature?: [number, number];
+  }) => void;
   setViewportState: (state: { centerX: number; centerY: number }) => void;
 };
 
@@ -113,7 +119,9 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
   const [handle, setHandle] = useState<DocHandle<GraphDoc> | null>(null);
   const [graphState, setGraphState] = useState<GraphState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [audioState, setAudioState] = useState<AudioContextState | "off">("off");
+  const [audioState, setAudioState] = useState<AudioContextState | "off">(
+    "off"
+  );
 
   // Refs for audio toggle callback (avoid stale closure)
   const graphStateRef = useRef<GraphState | null>(null);
@@ -302,10 +310,12 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
   const patchMultipleNodes = useCallback(
     (patches: Map<NodeId, Record<string, unknown>>) => {
       if (!handle || patches.size === 0) return;
-      const descriptions = Array.from(patches.entries()).map(([nodeId, patch]) => {
-        const nodeType = getNodeType(nodeId);
-        return formatPatchDescription(nodeType, patch);
-      });
+      const descriptions = Array.from(patches.entries()).map(
+        ([nodeId, patch]) => {
+          const nodeType = getNodeType(nodeId);
+          return formatPatchDescription(nodeType, patch);
+        }
+      );
       saveBeforeMutation(descriptions.join("; "));
 
       handle.change((doc) => {
@@ -414,8 +424,10 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       const snapshotBinary = batchSnapshotRef.current;
 
       // Compare binaries - if they're different, something changed
-      if (currentBinary.length !== snapshotBinary.length ||
-          !currentBinary.every((byte, i) => byte === snapshotBinary[i])) {
+      if (
+        currentBinary.length !== snapshotBinary.length ||
+        !currentBinary.every((byte, i) => byte === snapshotBinary[i])
+      ) {
         const description = batchDescriptionRef.current ?? "Batch change";
         pushUndo(snapshotBinary, description);
       }
@@ -440,7 +452,14 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     // Save current state to redo stack (with the description of what we're undoing)
     const currentBinary = Automerge.save(doc);
     console.log(`[History] Undo: ${entry.description}`);
-    setRedoStack((prev) => [...prev, { binary: currentBinary, timestamp: Date.now(), description: entry.description }]);
+    setRedoStack((prev) => [
+      ...prev,
+      {
+        binary: currentBinary,
+        timestamp: Date.now(),
+        description: entry.description,
+      },
+    ]);
 
     const restoredDoc = Automerge.load<GraphDoc>(entry.binary);
 
@@ -484,7 +503,14 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     // Save current state to undo stack (with the description of what we're redoing)
     const currentBinary = Automerge.save(doc);
     console.log(`[History] Redo: ${entry.description}`);
-    setUndoStack((prev) => [...prev, { binary: currentBinary, timestamp: Date.now(), description: entry.description }]);
+    setUndoStack((prev) => [
+      ...prev,
+      {
+        binary: currentBinary,
+        timestamp: Date.now(),
+        description: entry.description,
+      },
+    ]);
 
     const restoredDoc = Automerge.load<GraphDoc>(entry.binary);
 
@@ -560,17 +586,21 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
   );
 
   const setContextState = useCallback(
-    (state: { tempo?: number; a4Hz?: number; timeSignature?: [number, number] }) => {
+    (state: {
+      tempo?: number;
+      a4Hz?: number;
+      timeSignature?: [number, number];
+    }) => {
       if (!handle) return;
 
       handle.change((doc) => {
         if (!doc.meta.ui) {
           doc.meta.ui = {};
         }
-        doc.meta.ui.context = {
-          ...doc.meta.ui.context,
-          ...state,
-        };
+        if (!doc.meta.ui.context) {
+          doc.meta.ui.context = {};
+        }
+        Object.assign(doc.meta.ui.context, state);
       });
     },
     [handle]
@@ -639,8 +669,10 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     redo,
     canUndo: undoStack.length > 0,
     canRedo: redoStack.length > 0,
-    undoDescription: undoStack.length > 0 ? undoStack[undoStack.length - 1].description : null,
-    redoDescription: redoStack.length > 0 ? redoStack[redoStack.length - 1].description : null,
+    undoDescription:
+      undoStack.length > 0 ? undoStack[undoStack.length - 1].description : null,
+    redoDescription:
+      redoStack.length > 0 ? redoStack[redoStack.length - 1].description : null,
     newDocument,
     importDocument,
     uiState,

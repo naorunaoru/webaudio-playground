@@ -147,7 +147,7 @@ const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({
           />
           <MidiNoteInput
             value={clamp(node.state.rootNote, 0, 127)}
-            onChange={(v) => onPatchNode(node.id, { rootNote: Math.round(v) })}
+            onChange={(v) => onPatchNode(node.id, { rootNote: v })}
             label="Root note"
             onDragStart={startBatch}
             onDragEnd={endBatch}

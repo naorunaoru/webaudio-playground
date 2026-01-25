@@ -16,11 +16,7 @@ const MidiToCvUi: React.FC<NodeUiProps<MidiToCvNode>> = ({
     <div style={{ display: "flex", justifyContent: "center" }}>
       <NumericInput
         value={node.state.voiceCount}
-        onChange={(v) =>
-          onPatchNode(node.id, {
-            voiceCount: Math.max(1, Math.min(16, Math.round(v))),
-          })
-        }
+        onChange={(v) => onPatchNode(node.id, { voiceCount: v })}
         min={1}
         max={16}
         step={1}
