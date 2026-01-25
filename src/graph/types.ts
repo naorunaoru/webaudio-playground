@@ -1,10 +1,13 @@
-export type PortKind =
-  | "audio" // Continuous audio-rate signal (-1 to 1)
-  | "cv" // Continuous control voltage (0-1 or -1 to 1)
-  | "pitch" // V/oct pitch CV (continuous)
-  | "gate" // Event: on/off with duration (discrete)
-  | "trigger" // Event: instantaneous (discrete)
-  | "midi"; // MIDI messages
+export const PORT_KINDS = [
+  "audio", // Continuous audio-rate signal (-1 to 1)
+  "cv", // Continuous control voltage (0-1 or -1 to 1)
+  "pitch", // V/oct pitch CV (continuous)
+  "gate", // Event: on/off with duration (discrete)
+  "trigger", // Event: instantaneous (discrete)
+  "midi", // MIDI messages
+] as const;
+
+export type PortKind = (typeof PORT_KINDS)[number];
 
 export type PortDirection = "in" | "out";
 

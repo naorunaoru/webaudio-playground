@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PORT_KINDS } from "@/graph/types";
 
 export const CURRENT_FORMAT_VERSION = "1.0.0";
 
@@ -15,7 +16,7 @@ export const MetaSchema = z.object({
 
 export type ProjectMeta = z.infer<typeof MetaSchema>;
 
-const PortKindSchema = z.enum(["audio", "midi", "cc", "automation"]);
+const PortKindSchema = z.enum(PORT_KINDS);
 
 const ConnectionEndpointSchema = z.object({
   nodeId: z.string(),
