@@ -5,6 +5,7 @@ import { ccSourceNode } from "./ccSource";
 import { midiToCvNode } from "./midiToCv";
 import { midiChordNode } from "./midiChord";
 import { midiMonitorNode } from "./midiMonitor";
+import { voiceMonitorNode } from "./voiceMonitor";
 import { oscillatorNode } from "./oscillator";
 import { vcoNode } from "./vco";
 import { vcaNode } from "./vca";
@@ -23,6 +24,7 @@ export const NODE_MODULES = {
   midiToCv: midiToCvNode,
   midiChord: midiChordNode,
   midiMonitor: midiMonitorNode,
+  voiceMonitor: voiceMonitorNode,
   oscillator: oscillatorNode,
   vco: vcoNode,
   vca: vcaNode,
