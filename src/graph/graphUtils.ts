@@ -85,7 +85,8 @@ export function createNode<TType extends GraphNode["type"]>(
   type: TType,
   x: number,
   y: number,
-  id?: string
+  id?: string,
+  state?: Partial<Extract<GraphNode, { type: TType }>["state"]>
 ): Extract<GraphNode, { type: TType }> {
   const def = getNodeDef(type);
   return {
@@ -93,7 +94,7 @@ export function createNode<TType extends GraphNode["type"]>(
     type,
     x,
     y,
-    state: def.defaultState(),
+    state: { ...def.defaultState(), ...state },
   } as Extract<GraphNode, { type: TType }>;
 }
 
