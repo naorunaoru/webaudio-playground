@@ -105,7 +105,12 @@ function createEnvelopeRuntime(
   }
 
   let worklet: AudioWorkletNode | null = null;
+  let workletReady = false;
   let cachedEnv: EnvelopeNodeState["env"] | null = null;
+
+  // Queue for events that arrive before worklet is ready
+  type PendingEvent = { portId: string; event: VoiceEvent };
+  const pendingEvents: PendingEvent[] = [];
 
   const createWorklet = async () => {
     if (worklet) return;
@@ -148,6 +153,13 @@ function createEnvelopeRuntime(
       }
 
       worklet.connect(outputSplitter);
+
+      // Mark worklet as ready and flush pending events
+      workletReady = true;
+      for (const pending of pendingEvents) {
+        processEvent(pending.portId, pending.event);
+      }
+      pendingEvents.length = 0;
     } catch (e) {
       console.error("Failed to create envelope worklet:", e);
     }
@@ -366,6 +378,33 @@ function createEnvelopeRuntime(
     };
   }
 
+  function processEvent(portId: string, event: VoiceEvent) {
+    if (portId !== "gate_in") return;
+    if (!cachedEnv) return;
+
+    const voiceIdx = event.voice;
+    if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) return;
+
+    if (event.type === "gate") {
+      if (event.state === "on") {
+        // Find upstream allocator and hold the voice
+        if (graphRef) {
+          const sourceInfo = findAllocator(graphRef, nodeId, "gate_in", getAudioNode);
+          if (sourceInfo) {
+            const upstreamVoice = sourceInfo.mapping.toUpstream(voiceIdx);
+            sourceInfo.allocator.hold(upstreamVoice, consumerId);
+            voiceToSource.set(voiceIdx, sourceInfo);
+          }
+        }
+        applyGateOn(voiceIdx, cachedEnv);
+      } else {
+        applyGateOff(voiceIdx, cachedEnv);
+      }
+    } else if (event.type === "force-release") {
+      applyForceRelease(voiceIdx);
+    }
+  }
+
   return {
     type: "envelope",
     updateState: (state) => {
@@ -392,30 +431,12 @@ function createEnvelopeRuntime(
       return [];
     },
     handleEvent: (portId, event: VoiceEvent) => {
-      if (portId !== "gate_in") return;
-      if (!cachedEnv) return;
-
-      const voiceIdx = event.voice;
-      if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) return;
-
-      if (event.type === "gate") {
-        if (event.state === "on") {
-          // Find upstream allocator and hold the voice
-          if (graphRef) {
-            const sourceInfo = findAllocator(graphRef, nodeId, "gate_in", getAudioNode);
-            if (sourceInfo) {
-              const upstreamVoice = sourceInfo.mapping.toUpstream(voiceIdx);
-              sourceInfo.allocator.hold(upstreamVoice, consumerId);
-              voiceToSource.set(voiceIdx, sourceInfo);
-            }
-          }
-          applyGateOn(voiceIdx, cachedEnv);
-        } else {
-          applyGateOff(voiceIdx, cachedEnv);
-        }
-      } else if (event.type === "force-release") {
-        applyForceRelease(voiceIdx);
+      // Queue events until worklet is ready
+      if (!workletReady) {
+        pendingEvents.push({ portId, event });
+        return;
       }
+      processEvent(portId, event);
     },
     onConnectionsChanged: ({ inputs }) => {
       // If gate input is disconnected, release all holds
