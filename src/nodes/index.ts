@@ -9,6 +9,7 @@ import { voiceMonitorNode } from "./voiceMonitor";
 import { oscillatorNode } from "./oscillator";
 import { vcoNode } from "./vco";
 import { vcaNode } from "./vca";
+import { lfoNode } from "./lfo";
 import { envelopeNode } from "./envelope";
 import { gainNode } from "./gain";
 import { filterNode } from "./filter";
@@ -28,6 +29,7 @@ export const NODE_MODULES = {
   oscillator: oscillatorNode,
   vco: vcoNode,
   vca: vcaNode,
+  lfo: lfoNode,
   envelope: envelopeNode,
   gain: gainNode,
   filter: filterNode,
