@@ -41,6 +41,8 @@ export const midiToCvGraph: NodeDefinition<MidiToCvNode> = {
     { id: "gate_out", name: "Gate", kind: "gate", direction: "out" },
     { id: "pitch_out", name: "Pitch", kind: "pitch", direction: "out" },
     { id: "velocity_out", name: "Vel", kind: "cv", direction: "out" },
+    { id: "pressure_out", name: "Press", kind: "cv", direction: "out" },
+    { id: "slide_out", name: "Slide", kind: "pitch", direction: "out" },
   ],
   ui: MidiToCvUi,
   normalizeState: (state) => {
