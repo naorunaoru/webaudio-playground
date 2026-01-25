@@ -97,8 +97,18 @@ export type TriggerEvent = Readonly<{
   time: number; // AudioContext.currentTime for sample-accurate scheduling
 }>;
 
-/** Voice event: gate or trigger. */
-export type VoiceEvent = GateEvent | TriggerEvent;
+/**
+ * Force release event: voice is being reclaimed due to voice stealing.
+ * Consumers should immediately release their hold and fast-fade any active processing.
+ */
+export type ForceReleaseEvent = Readonly<{
+  type: "force-release";
+  voice: number;
+  time: number; // AudioContext.currentTime for sample-accurate scheduling
+}>;
+
+/** Voice event: gate, trigger, or force-release. */
+export type VoiceEvent = GateEvent | TriggerEvent | ForceReleaseEvent;
 
 export type DragState =
   | { type: "none" }

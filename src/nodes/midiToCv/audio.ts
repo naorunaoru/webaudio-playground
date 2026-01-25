@@ -1,15 +1,9 @@
 import type { GraphNode, GraphState, MidiEvent, NodeId } from "@graph/types";
 import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
 import type { AudioNodeServices, DispatchEventFn } from "@/types/nodeModule";
+import { VoiceAllocator } from "@audio/voiceAllocator";
 
 type MidiToCvGraphNode = Extract<GraphNode, { type: "midiToCv" }>;
-
-type Voice = {
-  note: number;
-  velocity: number;
-  pitchSource: ConstantSourceNode;
-  velocitySource: ConstantSourceNode;
-};
 
 /**
  * Sentinel value indicating no active pitch.
@@ -38,15 +32,15 @@ function createMidiToCvRuntime(
   nodeId: NodeId,
   dispatchEvent: DispatchEventFn
 ): AudioNodeInstance<MidiToCvGraphNode> {
-  let voiceCount = 8;
   let graphRef: GraphState | null = null;
 
-  // Voice pool: array of voices, index = voice number
-  // null = free, Voice = allocated
-  const voices: (Voice | null)[] = Array(voiceCount).fill(null);
-
-  // FIFO queue for voice allocation (oldest first)
-  const allocationOrder: number[] = [];
+  // Create voice allocator
+  const allocator = new VoiceAllocator(8, {
+    nodeId,
+    getGraphRef: () => graphRef,
+    dispatchEvent,
+    getCurrentTime: () => ctx.currentTime,
+  });
 
   // Map from MIDI note to voice index for note-off lookup
   const noteToVoice = new Map<number, number>();
@@ -55,8 +49,8 @@ function createMidiToCvRuntime(
   const pitchSources: ConstantSourceNode[] = [];
   const velocitySources: ConstantSourceNode[] = [];
 
-  function ensureVoiceCount(count: number) {
-    // Add new voices if needed
+  function ensureAudioNodes(count: number) {
+    // Add new audio nodes if needed
     while (pitchSources.length < count) {
       const pitch = ctx.createConstantSource();
       pitch.offset.value = PITCH_SILENT; // Silent until note played
@@ -68,50 +62,28 @@ function createMidiToCvRuntime(
       vel.start();
       velocitySources.push(vel);
     }
-    // Update voice array size
-    while (voices.length < count) {
-      voices.push(null);
-    }
-    voiceCount = count;
-  }
-
-  function allocateVoice(): number {
-    // Find first free voice
-    for (let i = 0; i < voiceCount; i++) {
-      if (voices[i] === null) {
-        return i;
-      }
-    }
-    // No free voice - steal oldest (FIFO)
-    if (allocationOrder.length > 0) {
-      const oldest = allocationOrder.shift()!;
-      // Send gate off for stolen voice
-      if (graphRef && voices[oldest]) {
-        const stolenNote = voices[oldest]!.note;
-        noteToVoice.delete(stolenNote);
-        dispatchEvent(graphRef, nodeId, "gate_out", {
-          type: "gate",
-          voice: oldest,
-          state: "off",
-          time: ctx.currentTime,
-        });
-      }
-      return oldest;
-    }
-    return 0;
   }
 
   function handleNoteOn(note: number, velocity: number) {
     // If this note is already playing, reuse its voice
-    let voiceIdx = noteToVoice.get(note);
+    const existingVoice = noteToVoice.get(note);
 
-    if (voiceIdx === undefined) {
-      voiceIdx = allocateVoice();
+    let voiceIdx: number;
+    if (existingVoice !== undefined) {
+      // Note is already playing - retrigger on same voice
+      voiceIdx = existingVoice;
     } else {
-      // Remove from allocation order, will re-add at end
-      const orderIdx = allocationOrder.indexOf(voiceIdx);
-      if (orderIdx !== -1) allocationOrder.splice(orderIdx, 1);
+      // Allocate a new voice
+      const allocated = allocator.allocate();
+      if (allocated === null) {
+        // No voice available (shouldn't happen with current allocator logic)
+        return;
+      }
+      voiceIdx = allocated;
     }
+
+    // Mark voice as actively playing a note
+    allocator.markNoteActive(voiceIdx);
 
     // Set pitch and velocity CV
     const vOct = midiNoteToVoct(note);
@@ -120,10 +92,8 @@ function createMidiToCvRuntime(
     pitchSources[voiceIdx].offset.setValueAtTime(vOct, ctx.currentTime);
     velocitySources[voiceIdx].offset.setValueAtTime(velCv, ctx.currentTime);
 
-    // Track voice
-    voices[voiceIdx] = { note, velocity, pitchSource: pitchSources[voiceIdx], velocitySource: velocitySources[voiceIdx] };
+    // Track note-to-voice mapping
     noteToVoice.set(note, voiceIdx);
-    allocationOrder.push(voiceIdx);
 
     // Dispatch gate on
     if (graphRef) {
@@ -141,16 +111,12 @@ function createMidiToCvRuntime(
     if (voiceIdx === undefined) return;
 
     // Keep pitch CV at current value - envelope release needs it!
-    // Only clear velocity (though envelope may also use this during release)
-    // velocitySources[voiceIdx].offset.setValueAtTime(0, ctx.currentTime);
 
-    // Free the voice for reallocation
-    voices[voiceIdx] = null;
+    // Clear note-to-voice mapping
     noteToVoice.delete(note);
 
-    // Remove from allocation order
-    const orderIdx = allocationOrder.indexOf(voiceIdx);
-    if (orderIdx !== -1) allocationOrder.splice(orderIdx, 1);
+    // Mark voice as note-off in allocator (consumers may still hold it)
+    allocator.noteOff(voiceIdx);
 
     // Dispatch gate off - envelope will handle release phase
     if (graphRef) {
@@ -164,24 +130,30 @@ function createMidiToCvRuntime(
   }
 
   // Initialize with default voice count
-  ensureVoiceCount(voiceCount);
+  ensureAudioNodes(allocator.getVoiceCount());
 
   return {
     type: "midiToCv",
+    voiceAllocator: allocator,
     updateState: (state) => {
-      if (state.voiceCount !== voiceCount) {
-        ensureVoiceCount(state.voiceCount);
+      const currentCount = allocator.getVoiceCount();
+      if (state.voiceCount !== currentCount) {
+        // Ensure we have enough audio nodes first
+        ensureAudioNodes(state.voiceCount);
+        // Then request resize from allocator (may be deferred for shrinking)
+        allocator.requestResize(state.voiceCount);
       }
     },
     setGraphRef: (graph) => {
       graphRef = graph;
     },
     getAudioOutputs: (portId) => {
+      const count = allocator.getVoiceCount();
       if (portId === "pitch_out") {
-        return pitchSources.slice(0, voiceCount);
+        return pitchSources.slice(0, count);
       }
       if (portId === "velocity_out") {
-        return velocitySources.slice(0, voiceCount);
+        return velocitySources.slice(0, count);
       }
       return [];
     },
@@ -216,8 +188,10 @@ function createMidiToCvRuntime(
       velocitySources.length = 0;
     },
     getRuntimeState: () => ({
-      activeVoices: voices.filter(v => v !== null).map(v => v!.note),
-      voiceCount,
+      activeVoices: [...noteToVoice.values()],
+      voiceCount: allocator.getVoiceCount(),
+      targetVoiceCount: allocator.getTargetVoiceCount(),
+      allocationState: allocator.getAllocationState(),
     }),
   };
 }

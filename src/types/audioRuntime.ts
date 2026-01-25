@@ -1,4 +1,6 @@
 import type { GraphNode, GraphState, MidiEvent, NodeId, VoiceEvent } from "@graph/types";
+import type { VoiceAllocator } from "@audio/voiceAllocator";
+import type { VoiceMapping } from "@audio/voiceMapping";
 
 /** Result from handleMidi indicating how the event should be routed. */
 export type MidiHandleResult = {
@@ -40,6 +42,12 @@ export type AudioNodeInstance<TNode extends GraphNode = GraphNode> = {
   onConnectionsChanged?: (connected: { inputs: Set<string>; outputs: Set<string> }) => void;
   /** Called by engine to provide current graph reference for event dispatch. */
   setGraphRef?: (graph: GraphState) => void;
+
+  /** If this node owns a voice allocator, expose it for downstream discovery. */
+  voiceAllocator?: VoiceAllocator;
+
+  /** Get voice mapping for a specific output port (for pass-through nodes). */
+  getVoiceMappingForOutput?: (portId: string) => VoiceMapping;
 };
 
 export type AudioNodeFactory<TNode extends GraphNode = GraphNode> = Readonly<{
