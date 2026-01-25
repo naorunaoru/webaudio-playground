@@ -5,13 +5,9 @@ export type GraphHUDProps = {
 };
 
 export function GraphHUD({ status }: GraphHUDProps) {
-  return (
+  return status ? (
     <div className={styles.hud}>
-      <div className={styles.hint}>
-        Drag nodes. Drag from an output port to an input port to connect. Click
-        a wire (or node header) and press Delete to remove.
-      </div>
-      {status ? <div className={styles.hint}>{status}</div> : null}
+      <div className={styles.hint}>{status}</div>
     </div>
-  );
+  ) : null;
 }

@@ -176,11 +176,6 @@
   flex-wrap: wrap;
 }
 
-.hint {
-  font-size: 12px;
-  opacity: 0.75;
-}
-
 .uiLayer {
   position: absolute;
   inset: 0;
