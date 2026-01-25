@@ -77,7 +77,7 @@ export const gainGraph: NodeDefinition<GainNodeGraph> = {
   defaultState,
   ports: () => [
     { id: "audio_in", name: "In", kind: "audio", direction: "in" },
-    { id: "gain_in", name: "Gain", kind: "automation", direction: "in" },
+    { id: "gain_in", name: "Gain", kind: "cv", direction: "in" },
     { id: "audio_out", name: "Out", kind: "audio", direction: "out" },
   ],
   ui: GainUi,

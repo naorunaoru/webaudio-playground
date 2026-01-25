@@ -50,14 +50,14 @@ function createGainRuntime(ctx: AudioContext, _nodeId: NodeId): AudioNodeInstanc
       base.offset.setTargetAtTime(clamp(state.base, 0, 2), now, 0.02);
       cvAmount.gain.setTargetAtTime(clamp(state.depth, 0, 2), now, 0.02);
     },
-    getAudioInput: (portId) => {
-      if (portId === "audio_in") return input;
-      if (portId === "gain_in") return cvIn;
-      return null;
+    getAudioInputs: (portId) => {
+      if (portId === "audio_in") return [input];
+      if (portId === "gain_in") return [cvIn];
+      return [];
     },
-    getAudioOutput: (portId) => {
-      if (portId === "audio_out") return meter;
-      return null;
+    getAudioOutputs: (portId) => {
+      if (portId === "audio_out") return [meter];
+      return [];
     },
     onRemove: () => {
       meter.disconnect();

@@ -146,20 +146,6 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       }
 
       setIsLoading(false);
-
-      // Subscribe to changes
-      const onChange = () => {
-        const doc = docHandle.doc();
-        if (doc) {
-          setGraphState(docToGraphState(doc));
-        }
-      };
-
-      docHandle.on("change", onChange);
-
-      return () => {
-        docHandle.off("change", onChange);
-      };
     }
 
     init();
@@ -168,6 +154,24 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, []);
+
+  // Subscribe to handle changes - runs whenever handle changes (including after import/new)
+  useEffect(() => {
+    if (!handle) return;
+
+    const onChange = () => {
+      const doc = handle.doc();
+      if (doc) {
+        setGraphState(docToGraphState(doc));
+      }
+    };
+
+    handle.on("change", onChange);
+
+    return () => {
+      handle.off("change", onChange);
+    };
+  }, [handle]);
 
   // Helper to push to undo stack
   const pushUndo = useCallback((binary: Uint8Array, description: string) => {

@@ -66,7 +66,7 @@ export const ccSourceGraph: NodeDefinition<CcSourceNode> = {
   type: "ccSource",
   title: "CC Source",
   defaultState,
-  ports: () => [{ id: "cc_out", name: "CC", kind: "cc", direction: "out" }],
+  ports: () => [{ id: "midi_out", name: "MIDI", kind: "midi", direction: "out" }],
   ui: CcSourceUi,
   normalizeState: (state) => {
     const s = (state ?? {}) as Partial<CcSourceNode["state"]>;

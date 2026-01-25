@@ -1,4 +1,10 @@
-export type WaveformType = "sine" | "triangle" | "square" | "sawtooth" | "noise";
+export type WaveformType =
+  | "sine"
+  | "triangle"
+  | "square"
+  | "sawtooth"
+  | "sawtoothDown"
+  | "noise";
 
 export interface WaveformIconProps {
   type: WaveformType;
@@ -22,6 +28,8 @@ export function WaveformIcon({ type, size = 16 }: WaveformIconProps) {
     square: "M2 11 L2 5 L5 5 L5 11 L8 11 L8 5 L11 5 L11 11 L14 11 L14 5",
     // Sawtooth wave: ramp up, drop down
     sawtooth: "M2 11 L7 5 L7 11 L12 5 L12 11 L14 9",
+    // Sawtooth down wave: ramp down, jump up
+    sawtoothDown: "M2 5 L7 11 L7 5 L12 11 L12 5 L14 7",
     // Noise: jagged random walk
     noise: "M2 10 L3 6 L4 11 L5 5 L6 12 L7 4 L8 12 L9 5 L10 11 L11 6 L12 10 L13 7 L14 9",
   };

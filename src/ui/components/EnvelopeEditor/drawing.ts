@@ -56,12 +56,13 @@ function drawPlayhead(
   pad: number,
   h: number,
   xOfMs: (ms: number) => number,
-  dpr: number
+  dpr: number,
+  alpha: number = 0.65
 ) {
   const clamped = Math.max(0, Math.min(totalMs, playhead.ms));
   const x = xOfMs(clamped);
 
-  ctx.strokeStyle = "rgba(236,72,153,0.65)";
+  ctx.strokeStyle = `rgba(236,72,153,${alpha})`;
   ctx.lineWidth = 1.5 * dpr;
   ctx.beginPath();
   ctx.moveTo(x, pad);
@@ -92,7 +93,7 @@ export function drawEnvelope(
   dpr: number,
   env: EnvelopeEnv,
   activeHandle: HandleKey | null,
-  playhead: Playhead | null
+  playheads: Playhead[]
 ) {
   ctx.clearRect(0, 0, width, height);
 
@@ -109,8 +110,12 @@ export function drawEnvelope(
   ];
   drawCurve(ctx, allPts, dpr);
 
-  if (playhead != null) {
-    drawPlayhead(ctx, playhead, totalMs, pad, h, xOfMs, dpr);
+  // Draw all playheads with decreasing opacity for secondary voices
+  for (let i = 0; i < playheads.length; i++) {
+    const playhead = playheads[i];
+    // First playhead is full opacity, others fade slightly
+    const alpha = i === 0 ? 0.65 : Math.max(0.25, 0.5 - i * 0.05);
+    drawPlayhead(ctx, playhead, totalMs, pad, h, xOfMs, dpr, alpha);
   }
 
   const handles = getHandlePositions(env, coords);

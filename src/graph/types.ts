@@ -1,4 +1,14 @@
-export type PortKind = "audio" | "midi" | "cc" | "automation";
+export const PORT_KINDS = [
+  "audio", // Continuous audio-rate signal (-1 to 1)
+  "cv", // Continuous control voltage (0-1 or -1 to 1)
+  "pitch", // V/oct pitch CV (continuous)
+  "gate", // Event: on/off with duration (discrete)
+  "trigger", // Event: instantaneous (discrete)
+  "midi", // MIDI messages
+] as const;
+
+export type PortKind = (typeof PORT_KINDS)[number];
+
 export type PortDirection = "in" | "out";
 
 // Augment this interface from `src/nodes/<node>/types.ts` to register new node types.
@@ -17,6 +27,8 @@ export type PortSpec = Readonly<{
   name: string;
   kind: PortKind;
   direction: PortDirection;
+  /** Number of channels (1 = mono, N = poly). Per-port, not per-node. */
+  channelCount?: number;
 }>;
 
 export type ConnectionEndpoint = Readonly<{
@@ -72,6 +84,34 @@ export type MidiEvent =
       channel: number;
       atMs: number;
     };
+
+/** Gate event: state change with duration (on/off). */
+export type GateEvent = Readonly<{
+  type: "gate";
+  voice: number;
+  state: "on" | "off";
+  time: number; // AudioContext.currentTime for sample-accurate scheduling
+}>;
+
+/** Trigger event: instantaneous event. */
+export type TriggerEvent = Readonly<{
+  type: "trigger";
+  voice: number;
+  time: number; // AudioContext.currentTime for sample-accurate scheduling
+}>;
+
+/**
+ * Force release event: voice is being reclaimed due to voice stealing.
+ * Consumers should immediately release their hold and fast-fade any active processing.
+ */
+export type ForceReleaseEvent = Readonly<{
+  type: "force-release";
+  voice: number;
+  time: number; // AudioContext.currentTime for sample-accurate scheduling
+}>;
+
+/** Voice event: gate, trigger, or force-release. */
+export type VoiceEvent = GateEvent | TriggerEvent | ForceReleaseEvent;
 
 export type DragState =
   | { type: "none" }
