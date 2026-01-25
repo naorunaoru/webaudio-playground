@@ -83,6 +83,25 @@ export type MidiEvent =
       value: number; // 0..127
       channel: number;
       atMs: number;
+    }
+  | {
+      type: "pitchBend";
+      value: number; // -8192..8191 (14-bit, center = 0)
+      channel: number;
+      atMs: number;
+    }
+  | {
+      type: "aftertouch";
+      value: number; // 0..127 (channel pressure)
+      channel: number;
+      atMs: number;
+    }
+  | {
+      type: "polyAftertouch";
+      note: number;
+      value: number; // 0..127
+      channel: number;
+      atMs: number;
     };
 
 /** Gate event: state change with duration (on/off). */

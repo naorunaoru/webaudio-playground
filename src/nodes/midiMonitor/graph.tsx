@@ -27,7 +27,36 @@ function formatEvent(event: MidiEvent): string {
   if (event.type === "cc") {
     return `CC${event.controller.toString().padStart(3)} = ${event.value}`;
   }
+  if (event.type === "pitchBend") {
+    // Show as percentage of full range (-100% to +100%)
+    const pct = Math.round((event.value / 8192) * 100);
+    return `PB  ${pct >= 0 ? "+" : ""}${pct}%`;
+  }
+  if (event.type === "aftertouch") {
+    return `AT  ${event.value}`;
+  }
+  if (event.type === "polyAftertouch") {
+    return `PAT ${formatNote(event.note).padEnd(4)} ${event.value}`;
+  }
   return "???";
+}
+
+function getEventColor(event: MidiEvent): string {
+  switch (event.type) {
+    case "noteOn":
+      return "#4ade80"; // green
+    case "noteOff":
+      return "#f87171"; // red
+    case "cc":
+      return "#60a5fa"; // blue
+    case "pitchBend":
+      return "#c084fc"; // purple
+    case "aftertouch":
+    case "polyAftertouch":
+      return "#facc15"; // yellow
+    default:
+      return "#9ca3af"; // gray
+  }
 }
 
 const MidiMonitorUi: React.FC<NodeUiProps<MidiMonitorNode>> = ({
@@ -75,7 +104,7 @@ const MidiMonitorUi: React.FC<NodeUiProps<MidiMonitorNode>> = ({
               style={{
                 padding: "2px 0",
                 opacity: 1 - i * 0.08,
-                color: evt.type === "noteOn" ? "#4ade80" : evt.type === "noteOff" ? "#f87171" : "#60a5fa",
+                color: getEventColor(evt),
               }}
             >
               {formatEvent(evt)}

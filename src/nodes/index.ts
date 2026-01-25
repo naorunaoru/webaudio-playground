@@ -1,5 +1,6 @@
 import type { GraphNode } from "@graph/types";
 import type { NodeModule } from "@/types/nodeModule";
+import { channelNode } from "./channel";
 import { midiSourceNode } from "./midiSource";
 import { ccSourceNode } from "./ccSource";
 import { midiToCvNode } from "./midiToCv";
@@ -20,6 +21,7 @@ import { samplePlayerNode } from "./samplePlayer";
 import { audioOutNode } from "./audioOut";
 
 export const NODE_MODULES = {
+  channel: channelNode,
   midiSource: midiSourceNode,
   ccSource: ccSourceNode,
   midiToCv: midiToCvNode,
