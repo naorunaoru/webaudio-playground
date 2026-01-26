@@ -13,6 +13,9 @@ import { lfoNode } from "./lfo";
 import { envelopeNode } from "./envelope";
 import { gainNode } from "./gain";
 import { filterNode } from "./filter";
+import { pitchTransposeNode } from "./pitchTranspose";
+import { pitchRatioNode } from "./pitchRatio";
+import { attenuatorNode } from "./attenuator";
 import { delayNode } from "./delay";
 import { reverbNode } from "./reverb";
 import { limiterNode } from "./limiter";
@@ -26,13 +29,16 @@ export const NODE_MODULES = {
   midiChord: midiChordNode,
   midiMonitor: midiMonitorNode,
   voiceMonitor: voiceMonitorNode,
-  oscillator: oscillatorNode,
+  oscillator: oscillatorNode, // superseded by VCO
   vco: vcoNode,
   vca: vcaNode,
   lfo: lfoNode,
   envelope: envelopeNode,
-  gain: gainNode,
+  gain: gainNode, // superseded by VCA
   filter: filterNode,
+  pitchTranspose: pitchTransposeNode,
+  pitchRatio: pitchRatioNode,
+  attenuator: attenuatorNode,
   delay: delayNode,
   reverb: reverbNode,
   limiter: limiterNode,

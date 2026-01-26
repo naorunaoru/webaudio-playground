@@ -20,7 +20,7 @@ const VcaUi: React.FC<NodeUiProps<VcaNode>> = ({
         value={node.state.baseGain}
         onChange={(v) => onPatchNode(node.id, { baseGain: v })}
         min={0}
-        max={1}
+        max={10}
         label="Gain"
         format={(v) => `${Math.round(v * 100)}%`}
         onDragStart={startBatch}
