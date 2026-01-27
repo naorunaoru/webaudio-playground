@@ -1,10 +1,16 @@
 import JSZip from "jszip";
 import type { GraphState } from "@graph/types";
 import { getSample, type StoredSample } from "@audio/sampleStore";
+import { getMidi, type StoredMidi } from "@audio/midiStore";
 import { CURRENT_FORMAT_VERSION, type ProjectMeta } from "./schemas";
 
 type SampleRef = {
   sampleId: string;
+  nodeId: string;
+};
+
+type MidiRef = {
+  midiId: string;
   nodeId: string;
 };
 
@@ -15,6 +21,19 @@ function collectSampleRefs(graph: GraphState): SampleRef[] {
       const state = node.state as { sampleId: string | null };
       if (state.sampleId) {
         refs.push({ sampleId: state.sampleId, nodeId: node.id });
+      }
+    }
+  }
+  return refs;
+}
+
+function collectMidiRefs(graph: GraphState): MidiRef[] {
+  const refs: MidiRef[] = [];
+  for (const node of graph.nodes) {
+    if (node.type === "midiPlayer") {
+      const state = node.state as { midiId: string | null };
+      if (state.midiId) {
+        refs.push({ midiId: state.midiId, nodeId: node.id });
       }
     }
   }
@@ -84,6 +103,40 @@ export async function exportProject(
     samplesFolder?.file(
       `${ref.sampleId}.meta.json`,
       JSON.stringify(sampleMeta, null, 2)
+    );
+  }
+
+  // Export MIDI files
+  const midiRefs = collectMidiRefs(graph);
+  const midiFolder = zip.folder("midi");
+  const processedMidiIds = new Set<string>();
+
+  for (const ref of midiRefs) {
+    if (processedMidiIds.has(ref.midiId)) continue;
+    processedMidiIds.add(ref.midiId);
+
+    const midi = await getMidi(ref.midiId);
+    if (!midi) {
+      console.warn(`MIDI file ${ref.midiId} not found in IndexedDB`);
+      continue;
+    }
+
+    const filename = `${ref.midiId}.mid`;
+
+    const midiMeta: StoredMidi = {
+      id: midi.id,
+      name: midi.name,
+      size: midi.size,
+      createdAt: midi.createdAt,
+      durationTicks: midi.durationTicks,
+      ticksPerBeat: midi.ticksPerBeat,
+      trackCount: midi.trackCount,
+    };
+
+    midiFolder?.file(filename, midi.data);
+    midiFolder?.file(
+      `${ref.midiId}.meta.json`,
+      JSON.stringify(midiMeta, null, 2)
     );
   }
 

@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import type { GraphState, GraphNode } from "@graph/types";
 import { putSampleFromFile } from "@audio/sampleStore";
+import { putMidiFromFile } from "@audio/midiStore";
 import { normalizeGraph } from "@graph/graphUtils";
 import {
   MetaSchema,
@@ -28,6 +29,16 @@ type SampleMetaFile = {
   mime: string;
   size: number;
   createdAt: number;
+};
+
+type MidiMetaFile = {
+  id: string;
+  name: string;
+  size: number;
+  createdAt: number;
+  durationTicks: number;
+  ticksPerBeat: number;
+  trackCount: number;
 };
 
 export async function importProject(file: File): Promise<ImportResult> {
@@ -127,6 +138,55 @@ export async function importProject(file: File): Promise<ImportResult> {
       sampleIdMap.set(originalId, storedSample.id);
     }
 
+    // Import MIDI files
+    const midiIdMap = new Map<string, string>();
+
+    const midiFiles = Object.keys(zip.files).filter(
+      (path) =>
+        path.startsWith("midi/") &&
+        !path.endsWith(".meta.json") &&
+        !path.endsWith("/")
+    );
+
+    for (const midiPath of midiFiles) {
+      const midiFile = zip.file(midiPath);
+      if (!midiFile) continue;
+
+      const filename = midiPath.split("/").pop() ?? "";
+      const dotIdx = filename.lastIndexOf(".");
+      const originalId = dotIdx > 0 ? filename.slice(0, dotIdx) : filename;
+
+      const metaPath = `midi/${originalId}.meta.json`;
+      const metaJsonFile = zip.file(metaPath);
+
+      let midiMeta: MidiMetaFile | null = null;
+      if (metaJsonFile) {
+        try {
+          const metaContent = await metaJsonFile.async("string");
+          midiMeta = JSON.parse(metaContent) as MidiMetaFile;
+        } catch {
+          warnings.push(`Could not parse metadata for MIDI ${originalId}`);
+        }
+      }
+
+      const blob = await midiFile.async("blob");
+
+      const importFile = new File([blob], midiMeta?.name ?? filename, {
+        type: "audio/midi",
+      });
+
+      if (midiMeta) {
+        const storedMidi = await putMidiFromFile(importFile, {
+          durationTicks: midiMeta.durationTicks,
+          ticksPerBeat: midiMeta.ticksPerBeat,
+          trackCount: midiMeta.trackCount,
+        });
+        midiIdMap.set(originalId, storedMidi.id);
+      } else {
+        warnings.push(`MIDI file ${originalId} missing metadata, skipping`);
+      }
+    }
+
     const graph = graphResult.data as GraphState;
     const remappedNodes: GraphNode[] = graph.nodes.map((node) => {
       if (node.type === "samplePlayer") {
@@ -149,6 +209,29 @@ export async function importProject(file: File): Promise<ImportResult> {
           return {
             ...node,
             state: { ...state, sampleId: null, sampleName: null },
+          } as GraphNode;
+        }
+      }
+      if (node.type === "midiPlayer") {
+        const state = node.state as {
+          midiId: string | null;
+          midiName: string | null;
+          [key: string]: unknown;
+        };
+        if (state.midiId) {
+          const newId = midiIdMap.get(state.midiId);
+          if (newId) {
+            return {
+              ...node,
+              state: { ...state, midiId: newId },
+            } as GraphNode;
+          }
+          warnings.push(
+            `MIDI file ${state.midiId} not found in project, clearing reference`
+          );
+          return {
+            ...node,
+            state: { ...state, midiId: null, midiName: null },
           } as GraphNode;
         }
       }

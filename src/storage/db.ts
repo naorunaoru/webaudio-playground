@@ -1,8 +1,9 @@
 const DB_NAME = "webaudio-playground";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 export const STORE_SAMPLES = "samples";
 export const STORE_DOCUMENTS = "documents";
+export const STORE_MIDI = "midi";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -32,6 +33,13 @@ export function openDb(): Promise<IDBDatabase> {
       if (oldVersion < 2) {
         if (!db.objectStoreNames.contains(STORE_DOCUMENTS)) {
           db.createObjectStore(STORE_DOCUMENTS);
+        }
+      }
+
+      // Version 3: MIDI files store
+      if (oldVersion < 3) {
+        if (!db.objectStoreNames.contains(STORE_MIDI)) {
+          db.createObjectStore(STORE_MIDI, { keyPath: "id" });
         }
       }
     };

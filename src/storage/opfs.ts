@@ -1,4 +1,5 @@
 const SAMPLES_DIR = "samples";
+const MIDI_DIR = "midi";
 
 let rootDirPromise: Promise<FileSystemDirectoryHandle> | null = null;
 
@@ -11,6 +12,11 @@ async function getRoot(): Promise<FileSystemDirectoryHandle> {
 async function getSamplesDir(): Promise<FileSystemDirectoryHandle> {
   const root = await getRoot();
   return root.getDirectoryHandle(SAMPLES_DIR, { create: true });
+}
+
+async function getMidiDir(): Promise<FileSystemDirectoryHandle> {
+  const root = await getRoot();
+  return root.getDirectoryHandle(MIDI_DIR, { create: true });
 }
 
 export async function writeFile(filename: string, data: Blob): Promise<string> {
@@ -48,6 +54,52 @@ export async function deleteFile(path: string): Promise<void> {
     }
     const filename = parts[1];
     const dir = await getSamplesDir();
+    await dir.removeEntry(filename);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "NotFoundError") {
+      return;
+    }
+    throw e;
+  }
+}
+
+// MIDI file operations
+
+export async function writeMidiFile(filename: string, data: Blob): Promise<string> {
+  const dir = await getMidiDir();
+  const fileHandle = await dir.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(data);
+  await writable.close();
+  return `${MIDI_DIR}/${filename}`;
+}
+
+export async function readMidiFile(path: string): Promise<Blob | null> {
+  try {
+    const parts = path.split("/");
+    if (parts.length !== 2 || parts[0] !== MIDI_DIR) {
+      return null;
+    }
+    const filename = parts[1];
+    const dir = await getMidiDir();
+    const fileHandle = await dir.getFileHandle(filename);
+    return fileHandle.getFile();
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "NotFoundError") {
+      return null;
+    }
+    throw e;
+  }
+}
+
+export async function deleteMidiFile(path: string): Promise<void> {
+  try {
+    const parts = path.split("/");
+    if (parts.length !== 2 || parts[0] !== MIDI_DIR) {
+      return;
+    }
+    const filename = parts[1];
+    const dir = await getMidiDir();
     await dir.removeEntry(filename);
   } catch (e) {
     if (e instanceof DOMException && e.name === "NotFoundError") {

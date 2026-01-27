@@ -48,6 +48,9 @@ export type AudioNodeInstance<TNode extends GraphNode = GraphNode> = {
 
   /** Get voice mapping for a specific output port (for pass-through nodes). */
   getVoiceMappingForOutput?: (portId: string) => VoiceMapping;
+
+  /** Handle runtime commands (play, stop, etc.) that should not be persisted/undoable. */
+  handleCommand?: (command: string, payload?: unknown) => void;
 };
 
 export type AudioNodeFactory<TNode extends GraphNode = GraphNode> = Readonly<{
