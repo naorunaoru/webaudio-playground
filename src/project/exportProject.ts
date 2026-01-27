@@ -51,6 +51,7 @@ export async function exportProject(
     projectName: options.projectName ?? "Untitled Project",
     createdAt: Date.now(),
     exportedAt: Date.now(),
+    buildRevision: __BUILD_REVISION__,
   };
   zip.file("meta.json", JSON.stringify(meta, null, 2));
 
