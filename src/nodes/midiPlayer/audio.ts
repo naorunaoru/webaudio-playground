@@ -3,6 +3,7 @@ import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
 import type { AudioNodeServices } from "@/types/nodeModule";
 import { getMidiManager } from "@audio/midiManager";
 import type { ParsedMidi } from "@audio/midiParser";
+import schedulerProcessorUrl from "./processor.ts?worklet";
 
 type MidiPlayerGraphNode = Extract<GraphNode, { type: "midiPlayer" }>;
 
@@ -13,43 +14,18 @@ export type MidiPlayerRuntimeState = {
   durationTicks: number;
 };
 
-const LOOKAHEAD_MS = 100;
-const SCHEDULE_INTERVAL_MS = 25;
-
 // Set to true to enable MIDI debug instrumentation (jitter + event stats)
-const MIDI_DEBUG = true;
+const MIDI_DEBUG = false;
 
-// Reusable silent audio buffer for precise scheduling (created lazily per AudioContext)
-const silentBufferCache = new WeakMap<AudioContext, AudioBuffer>();
+// Worklet registration per AudioContext
+const workletModuleLoadByContext = new WeakMap<AudioContext, Promise<void>>();
 
-function getSilentBuffer(ctx: AudioContext): AudioBuffer {
-  let buffer = silentBufferCache.get(ctx);
-  if (!buffer) {
-    // Create a minimal 1-sample silent buffer
-    buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
-    silentBufferCache.set(ctx, buffer);
-  }
-  return buffer;
-}
-
-/**
- * Schedule a callback using Web Audio API for sample-accurate timing.
- * Uses AudioBufferSourceNode.onended which fires on the audio thread,
- * providing much better precision than setTimeout (~0.02ms vs ~4-10ms jitter).
- */
-function scheduleAudioCallback(
-  ctx: AudioContext,
-  callback: () => void,
-  when: number,
-): AudioBufferSourceNode {
-  const source = ctx.createBufferSource();
-  source.buffer = getSilentBuffer(ctx);
-  source.connect(ctx.destination);
-  source.onended = callback;
-  // Ensure we don't schedule in the past
-  const startTime = Math.max(when, ctx.currentTime);
-  source.start(startTime);
-  return source;
+function ensureSchedulerWorkletLoaded(ctx: AudioContext): Promise<void> {
+  const existing = workletModuleLoadByContext.get(ctx);
+  if (existing) return existing;
+  const p = ctx.audioWorklet.addModule(schedulerProcessorUrl);
+  workletModuleLoadByContext.set(ctx, p);
+  return p;
 }
 
 // Jitter measurement
@@ -91,7 +67,6 @@ const jitterStats = {
 const eventStats = {
   scheduled: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 },
   dispatched: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 },
-  droppedByStopped: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 },
   schedule(type: "noteOn" | "noteOff" | "cc" | "pitchBend") {
     if (!MIDI_DEBUG) return;
     this.scheduled[type]++;
@@ -100,14 +75,9 @@ const eventStats = {
     if (!MIDI_DEBUG) return;
     this.dispatched[type]++;
   },
-  dropByStopped(type: "noteOn" | "noteOff" | "cc" | "pitchBend") {
-    if (!MIDI_DEBUG) return;
-    this.droppedByStopped[type]++;
-  },
   clear() {
     this.scheduled = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 };
     this.dispatched = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 };
-    this.droppedByStopped = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 };
   },
   print() {
     const types = ["noteOn", "noteOff", "cc", "pitchBend"] as const;
@@ -115,29 +85,150 @@ const eventStats = {
     for (const type of types) {
       const sched = this.scheduled[type];
       const disp = this.dispatched[type];
-      const dropped = this.droppedByStopped[type];
       if (sched > 0) {
-        const dropRate = sched > 0 ? ((dropped / sched) * 100).toFixed(1) : "0";
-        console.log(
-          `  ${type}: scheduled=${sched}, dispatched=${disp}, droppedByStopped=${dropped} (${dropRate}%)`,
-        );
+        console.log(`  ${type}: scheduled=${sched}, dispatched=${disp}`);
       }
     }
     const totalSched = types.reduce((sum, t) => sum + this.scheduled[t], 0);
     const totalDisp = types.reduce((sum, t) => sum + this.dispatched[t], 0);
-    const totalDropped = types.reduce(
-      (sum, t) => sum + this.droppedByStopped[t],
-      0,
-    );
-    console.log(
-      `  TOTAL: scheduled=${totalSched}, dispatched=${totalDisp}, droppedByStopped=${totalDropped}`,
-    );
+    console.log(`  TOTAL: scheduled=${totalSched}, dispatched=${totalDisp}`);
   },
 };
 
-// Expose to window for debugging (always available, but stats only collected when MIDI_DEBUG=true)
+// Expose to window for debugging
 (globalThis as any).__midiJitterStats = jitterStats;
 (globalThis as any).__midiEventStats = eventStats;
+
+// Flattened MIDI event type (must match processor.ts)
+type FlatMidiEvent = {
+  sampleTime: number;
+  type: "noteOn" | "noteOff" | "cc" | "pitchBend";
+  note?: number;
+  velocity?: number;
+  channel: number;
+  controller?: number;
+  value?: number;
+};
+
+/**
+ * Convert parsed MIDI to flat event list with pre-computed sample times.
+ * This is sent to the worklet for playback.
+ */
+function flattenMidiToEvents(
+  parsedMidi: ParsedMidi,
+  sampleRate: number,
+  tempoMultiplier: number,
+): { events: FlatMidiEvent[]; durationSamples: number } {
+  const events: FlatMidiEvent[] = [];
+  const ticksPerBeat = parsedMidi.ticksPerBeat;
+  const tempoChanges = parsedMidi.tempoChanges;
+
+  // Build tempo map: tick -> cumulative sample time
+  const tempoMap: Array<{
+    tick: number;
+    sampleTime: number;
+    samplesPerTick: number;
+  }> = [];
+  let cumulativeSamples = 0;
+  let lastTick = 0;
+  let lastBpm = tempoChanges[0]?.bpm ?? 120;
+
+  tempoMap.push({
+    tick: 0,
+    sampleTime: 0,
+    samplesPerTick:
+      (60 / (lastBpm * tempoMultiplier) / ticksPerBeat) * sampleRate,
+  });
+
+  for (const tc of tempoChanges) {
+    if (tc.tick > lastTick) {
+      const tickDelta = tc.tick - lastTick;
+      const effectiveBpm = lastBpm * tempoMultiplier;
+      const secondsPerTick = 60 / effectiveBpm / ticksPerBeat;
+      cumulativeSamples += tickDelta * secondsPerTick * sampleRate;
+    }
+    const effectiveBpm = tc.bpm * tempoMultiplier;
+    tempoMap.push({
+      tick: tc.tick,
+      sampleTime: cumulativeSamples,
+      samplesPerTick: (60 / effectiveBpm / ticksPerBeat) * sampleRate,
+    });
+    lastTick = tc.tick;
+    lastBpm = tc.bpm;
+  }
+
+  // Helper to convert tick to sample time
+  function tickToSample(tick: number): number {
+    // Binary search for tempo segment
+    let lo = 0;
+    let hi = tempoMap.length - 1;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi + 1) / 2);
+      if (tempoMap[mid].tick <= tick) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    const segment = tempoMap[lo];
+    const tickDelta = tick - segment.tick;
+    return Math.floor(segment.sampleTime + tickDelta * segment.samplesPerTick);
+  }
+
+  // Flatten all tracks into single event list
+  for (const track of parsedMidi.tracks) {
+    // Notes -> noteOn and noteOff events
+    for (const note of track.notes) {
+      events.push({
+        sampleTime: tickToSample(note.tick),
+        type: "noteOn",
+        note: note.note,
+        velocity: note.velocity,
+        channel: note.channel,
+      });
+      events.push({
+        sampleTime: tickToSample(note.tick + note.duration),
+        type: "noteOff",
+        note: note.note,
+        velocity: 0,
+        channel: note.channel,
+      });
+    }
+
+    // Control changes
+    for (const cc of track.controlChanges) {
+      events.push({
+        sampleTime: tickToSample(cc.tick),
+        type: "cc",
+        controller: cc.controller,
+        value: cc.value,
+        channel: cc.channel,
+      });
+    }
+
+    // Pitch bends
+    for (const pb of track.pitchBends) {
+      events.push({
+        sampleTime: tickToSample(pb.tick),
+        type: "pitchBend",
+        value: pb.value,
+        channel: pb.channel,
+      });
+    }
+  }
+
+  // Sort by sample time
+  events.sort((a, b) => a.sampleTime - b.sampleTime);
+
+  // Count events for stats
+  for (const event of events) {
+    eventStats.schedule(event.type);
+  }
+
+  const durationSamples = tickToSample(parsedMidi.durationTicks);
+
+  return { events, durationSamples };
+}
 
 function createMidiPlayerRuntime(
   ctx: AudioContext,
@@ -149,423 +240,143 @@ function createMidiPlayerRuntime(
   let parsedMidi: ParsedMidi | null = null;
   let loadedMidiId: string | null = null;
 
-  // Runtime-only playing state (not persisted in Automerge)
+  // Runtime-only playing state
   let isPlaying = false;
 
-  // Scheduling state
-  let schedulerInterval: number | null = null;
-  let lastScheduledTick = 0;
-  let playStartTime = 0;
-  let playStartTick = 0;
+  // Worklet node
+  let workletNode: AudioWorkletNode | null = null;
+  let workletReady = false;
 
-  // Track scheduled events to avoid duplicates
-  const scheduledEvents = new Set<string>();
-
-  // Track active audio nodes for cleanup on stop
-  const activeScheduledNodes: AudioBufferSourceNode[] = [];
-
-  // Precomputed tempo map: array of { tick, timeSeconds } for fast lookup
-  let tempoMap: Array<{ tick: number; time: number }> = [];
-
-  function buildTempoMap(): void {
-    if (!parsedMidi) {
-      tempoMap = [];
-      return;
-    }
-
-    const multiplier = currentState?.tempoMultiplier ?? 1;
-    const ticksPerBeat = parsedMidi.ticksPerBeat;
-    const tempoChanges = parsedMidi.tempoChanges;
-
-    tempoMap = [];
-    let currentTime = 0;
-    let lastTick = 0;
-    let lastBpm = tempoChanges[0]?.bpm ?? 120;
-
-    // Add starting point
-    tempoMap.push({ tick: 0, time: 0 });
-
-    for (const tc of tempoChanges) {
-      if (tc.tick > lastTick) {
-        // Calculate time elapsed from lastTick to tc.tick at lastBpm
-        const tickDelta = tc.tick - lastTick;
-        const effectiveBpm = lastBpm * multiplier;
-        const secondsPerBeat = 60 / effectiveBpm;
-        const secondsPerTick = secondsPerBeat / ticksPerBeat;
-        currentTime += tickDelta * secondsPerTick;
-      }
-      tempoMap.push({ tick: tc.tick, time: currentTime });
-      lastTick = tc.tick;
-      lastBpm = tc.bpm;
-    }
-
-    // Add endpoint for duration
-    if (parsedMidi.durationTicks > lastTick) {
-      const tickDelta = parsedMidi.durationTicks - lastTick;
-      const effectiveBpm = lastBpm * multiplier;
-      const secondsPerBeat = 60 / effectiveBpm;
-      const secondsPerTick = secondsPerBeat / ticksPerBeat;
-      currentTime += tickDelta * secondsPerTick;
-      tempoMap.push({ tick: parsedMidi.durationTicks, time: currentTime });
-    }
-  }
-
-  function tickToSeconds(tick: number): number {
-    if (!parsedMidi || tempoMap.length === 0) return 0;
-
-    const multiplier = currentState?.tempoMultiplier ?? 1;
-    const ticksPerBeat = parsedMidi.ticksPerBeat;
-    const tempoChanges = parsedMidi.tempoChanges;
-
-    // Binary search for the tempo segment containing this tick
-    let lo = 0;
-    let hi = tempoMap.length - 1;
-    while (lo < hi) {
-      const mid = Math.floor((lo + hi + 1) / 2);
-      if (tempoMap[mid].tick <= tick) {
-        lo = mid;
-      } else {
-        hi = mid - 1;
-      }
-    }
-
-    const segment = tempoMap[lo];
-    const tickDelta = tick - segment.tick;
-
-    // Find the BPM at this segment
-    let bpm = tempoChanges[0]?.bpm ?? 120;
-    for (const tc of tempoChanges) {
-      if (tc.tick <= segment.tick) {
-        bpm = tc.bpm;
-      } else {
-        break;
-      }
-    }
-
-    const effectiveBpm = bpm * multiplier;
-    const secondsPerBeat = 60 / effectiveBpm;
-    const secondsPerTick = secondsPerBeat / ticksPerBeat;
-
-    return segment.time + tickDelta * secondsPerTick;
-  }
-
-  function secondsToTick(seconds: number): number {
-    if (!parsedMidi || tempoMap.length === 0) return 0;
-
-    const multiplier = currentState?.tempoMultiplier ?? 1;
-    const ticksPerBeat = parsedMidi.ticksPerBeat;
-    const tempoChanges = parsedMidi.tempoChanges;
-
-    // Binary search for the tempo segment containing this time
-    let lo = 0;
-    let hi = tempoMap.length - 1;
-    while (lo < hi) {
-      const mid = Math.floor((lo + hi + 1) / 2);
-      if (tempoMap[mid].time <= seconds) {
-        lo = mid;
-      } else {
-        hi = mid - 1;
-      }
-    }
-
-    const segment = tempoMap[lo];
-    const timeDelta = seconds - segment.time;
-
-    // Find the BPM at this segment
-    let bpm = tempoChanges[0]?.bpm ?? 120;
-    for (const tc of tempoChanges) {
-      if (tc.tick <= segment.tick) {
-        bpm = tc.bpm;
-      } else {
-        break;
-      }
-    }
-
-    const effectiveBpm = bpm * multiplier;
-    const secondsPerBeat = 60 / effectiveBpm;
-    const secondsPerTick = secondsPerBeat / ticksPerBeat;
-
-    return segment.tick + timeDelta / secondsPerTick;
-  }
+  // For tracking playback position (updated from worklet messages)
+  let playStartSample = 0;
 
   function dispatchMidiEvent(event: MidiEvent): void {
     if (!graphRef) return;
     services.dispatchMidi(graphRef, nodeId, event);
   }
 
-  function scheduleNoteOn(
-    note: number,
-    velocity: number,
-    channel: number,
-    whenAudioTime: number,
-  ): void {
-    eventStats.schedule("noteOn");
-    if (whenAudioTime <= ctx.currentTime) {
-      eventStats.dispatch("noteOn");
-      dispatchMidiEvent({ type: "noteOn", note, velocity, channel });
-    } else {
-      const intendedFireTime =
-        performance.now() + (whenAudioTime - ctx.currentTime) * 1000;
-      const node = scheduleAudioCallback(
-        ctx,
-        () => {
-          const actualFireTime = performance.now();
-          const jitter = actualFireTime - intendedFireTime;
-          jitterStats.add(jitter);
-          // Remove from active nodes
-          const idx = activeScheduledNodes.indexOf(node);
-          if (idx !== -1) activeScheduledNodes.splice(idx, 1);
-          if (isPlaying) {
-            eventStats.dispatch("noteOn");
-            dispatchMidiEvent({ type: "noteOn", note, velocity, channel });
-          } else {
-            eventStats.dropByStopped("noteOn");
+  async function initWorklet(): Promise<void> {
+    if (workletNode) return;
+
+    try {
+      await ensureSchedulerWorkletLoaded(ctx);
+
+      workletNode = new AudioWorkletNode(ctx, "midi-player", {
+        numberOfInputs: 0,
+        numberOfOutputs: 1, // Need at least one output for worklet to be valid
+        outputChannelCount: [1],
+      });
+
+      workletNode.port.onmessage = (event) => {
+        const msg = event.data;
+
+        if (msg.type === "midiEvent") {
+          // Calculate jitter: difference between scheduled and actual sample time
+          // This measures the quantization to render quantum boundaries (128 samples)
+          const sampleJitter = msg.actualSample - msg.scheduledSample;
+          const jitterMs = (sampleJitter / ctx.sampleRate) * 1000;
+          jitterStats.add(jitterMs);
+
+          eventStats.dispatch(msg.eventType);
+
+          // Convert to MidiEvent and dispatch
+          if (msg.eventType === "noteOn") {
+            dispatchMidiEvent({
+              type: "noteOn",
+              note: msg.note,
+              velocity: msg.velocity,
+              channel: msg.channel,
+            });
+          } else if (msg.eventType === "noteOff") {
+            dispatchMidiEvent({
+              type: "noteOff",
+              note: msg.note,
+              channel: msg.channel,
+            });
+          } else if (msg.eventType === "cc") {
+            dispatchMidiEvent({
+              type: "cc",
+              controller: msg.controller,
+              value: msg.value,
+              channel: msg.channel,
+            });
+          } else if (msg.eventType === "pitchBend") {
+            dispatchMidiEvent({
+              type: "pitchBend",
+              value: msg.value,
+              channel: msg.channel,
+            });
           }
-        },
-        whenAudioTime,
-      );
-      activeScheduledNodes.push(node);
+        } else if (msg.type === "playbackEnded") {
+          isPlaying = false;
+          if (MIDI_DEBUG) {
+            jitterStats.print();
+            eventStats.print();
+          }
+        }
+      };
+
+      workletReady = true;
+    } catch (e) {
+      console.error("Failed to initialize MIDI player worklet:", e);
     }
   }
 
-  function scheduleNoteOff(
-    note: number,
-    channel: number,
-    whenAudioTime: number,
-  ): void {
-    eventStats.schedule("noteOff");
-    if (whenAudioTime <= ctx.currentTime) {
-      eventStats.dispatch("noteOff");
-      dispatchMidiEvent({ type: "noteOff", note, channel });
-    } else {
-      const intendedFireTime =
-        performance.now() + (whenAudioTime - ctx.currentTime) * 1000;
-      const node = scheduleAudioCallback(
-        ctx,
-        () => {
-          const actualFireTime = performance.now();
-          const jitter = actualFireTime - intendedFireTime;
-          jitterStats.add(jitter);
-          // Remove from active nodes
-          const idx = activeScheduledNodes.indexOf(node);
-          if (idx !== -1) activeScheduledNodes.splice(idx, 1);
-          // Always send note-off even if stopped (to release held notes)
-          eventStats.dispatch("noteOff");
-          dispatchMidiEvent({ type: "noteOff", note, channel });
-        },
-        whenAudioTime,
-      );
-      activeScheduledNodes.push(node);
-    }
-  }
+  function sendMidiToWorklet(): void {
+    if (!workletNode || !parsedMidi || !workletReady) return;
 
-  function scheduleEvents(fromTick: number, toTick: number): void {
-    if (!parsedMidi || !graphRef) return;
+    const tempoMultiplier = currentState?.tempoMultiplier ?? 1;
+    const { events, durationSamples } = flattenMidiToEvents(
+      parsedMidi,
+      ctx.sampleRate,
+      tempoMultiplier,
+    );
 
-    for (const track of parsedMidi.tracks) {
-      for (const note of track.notes) {
-        // Schedule note-on
-        if (note.tick >= fromTick && note.tick < toTick) {
-          const eventKey = `on-${note.tick}-${note.channel}-${note.note}`;
-          if (!scheduledEvents.has(eventKey)) {
-            scheduledEvents.add(eventKey);
-            const ticksFromStart = note.tick - playStartTick;
-            const secondsFromStart = tickToSeconds(ticksFromStart);
-            const noteOnTime = playStartTime + secondsFromStart;
-            scheduleNoteOn(note.note, note.velocity, note.channel, noteOnTime);
-          }
-        }
-
-        // Schedule note-off
-        const noteOffTick = note.tick + note.duration;
-        if (noteOffTick >= fromTick && noteOffTick < toTick) {
-          const eventKey = `off-${noteOffTick}-${note.channel}-${note.note}`;
-          if (!scheduledEvents.has(eventKey)) {
-            scheduledEvents.add(eventKey);
-            const ticksFromStart = noteOffTick - playStartTick;
-            const secondsFromStart = tickToSeconds(ticksFromStart);
-            const noteOffTime = playStartTime + secondsFromStart;
-            scheduleNoteOff(note.note, note.channel, noteOffTime);
-          }
-        }
-      }
-
-      // Schedule CC events
-      for (const cc of track.controlChanges) {
-        if (cc.tick >= fromTick && cc.tick < toTick) {
-          const eventKey = `cc-${cc.tick}-${cc.channel}-${cc.controller}`;
-          if (!scheduledEvents.has(eventKey)) {
-            scheduledEvents.add(eventKey);
-            eventStats.schedule("cc");
-            const ccTime =
-              playStartTime + tickToSeconds(cc.tick - playStartTick);
-            if (ccTime <= ctx.currentTime) {
-              eventStats.dispatch("cc");
-              dispatchMidiEvent({
-                type: "cc",
-                controller: cc.controller,
-                value: cc.value,
-                channel: cc.channel,
-              });
-            } else {
-              const intendedFireTime =
-                performance.now() + (ccTime - ctx.currentTime) * 1000;
-              const node = scheduleAudioCallback(
-                ctx,
-                () => {
-                  const actualFireTime = performance.now();
-                  jitterStats.add(actualFireTime - intendedFireTime);
-                  const idx = activeScheduledNodes.indexOf(node);
-                  if (idx !== -1) activeScheduledNodes.splice(idx, 1);
-                  if (isPlaying) {
-                    eventStats.dispatch("cc");
-                    dispatchMidiEvent({
-                      type: "cc",
-                      controller: cc.controller,
-                      value: cc.value,
-                      channel: cc.channel,
-                    });
-                  } else {
-                    eventStats.dropByStopped("cc");
-                  }
-                },
-                ccTime,
-              );
-              activeScheduledNodes.push(node);
-            }
-          }
-        }
-      }
-
-      // Schedule pitch bends
-      for (const pb of track.pitchBends) {
-        if (pb.tick >= fromTick && pb.tick < toTick) {
-          const eventKey = `pb-${pb.tick}-${pb.channel}`;
-          if (!scheduledEvents.has(eventKey)) {
-            scheduledEvents.add(eventKey);
-            eventStats.schedule("pitchBend");
-            const pbTime =
-              playStartTime + tickToSeconds(pb.tick - playStartTick);
-            if (pbTime <= ctx.currentTime) {
-              eventStats.dispatch("pitchBend");
-              dispatchMidiEvent({
-                type: "pitchBend",
-                value: pb.value,
-                channel: pb.channel,
-              });
-            } else {
-              const intendedFireTime =
-                performance.now() + (pbTime - ctx.currentTime) * 1000;
-              const node = scheduleAudioCallback(
-                ctx,
-                () => {
-                  const actualFireTime = performance.now();
-                  jitterStats.add(actualFireTime - intendedFireTime);
-                  const idx = activeScheduledNodes.indexOf(node);
-                  if (idx !== -1) activeScheduledNodes.splice(idx, 1);
-                  if (isPlaying) {
-                    eventStats.dispatch("pitchBend");
-                    dispatchMidiEvent({
-                      type: "pitchBend",
-                      value: pb.value,
-                      channel: pb.channel,
-                    });
-                  } else {
-                    eventStats.dropByStopped("pitchBend");
-                  }
-                },
-                pbTime,
-              );
-              activeScheduledNodes.push(node);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  function startScheduler(): void {
-    if (schedulerInterval !== null) return;
-    if (!parsedMidi) return;
-
-    playStartTime = ctx.currentTime;
-    playStartTick = 0;
-    lastScheduledTick = 0;
-    scheduledEvents.clear();
-    jitterStats.clear();
-    eventStats.clear();
-
-    schedulerInterval = window.setInterval(() => {
-      if (!parsedMidi || !isPlaying) return;
-
-      const elapsed = ctx.currentTime - playStartTime;
-      const elapsedTicks = secondsToTick(elapsed);
-      const currentTick = playStartTick + elapsedTicks;
-      const lookaheadSeconds = LOOKAHEAD_MS / 1000;
-      const lookaheadTicks =
-        secondsToTick(elapsed + lookaheadSeconds) - elapsedTicks;
-      const targetTick = currentTick + lookaheadTicks;
-
-      if (currentTick >= parsedMidi.durationTicks) {
-        if (currentState?.loop) {
-          // Reset for loop
-          playStartTime = ctx.currentTime;
-          playStartTick = 0;
-          lastScheduledTick = 0;
-          scheduledEvents.clear();
-        } else {
-          // Song ended - stop playback
-          stop();
-          return;
-        }
-      }
-
-      scheduleEvents(lastScheduledTick, targetTick);
-      lastScheduledTick = targetTick;
-    }, SCHEDULE_INTERVAL_MS);
-  }
-
-  function stopScheduler(): void {
-    if (schedulerInterval !== null) {
-      clearInterval(schedulerInterval);
-      schedulerInterval = null;
-    }
-    scheduledEvents.clear();
-
-    // Stop and clean up all pending audio-scheduled nodes
-    for (const node of activeScheduledNodes) {
-      try {
-        node.onended = null;
-        node.stop();
-        node.disconnect();
-      } catch {
-        // Node may have already finished
-      }
-    }
-    activeScheduledNodes.length = 0;
-
-    // Print stats when stopping (only if debug enabled)
-    if (MIDI_DEBUG) {
-      jitterStats.print();
-      eventStats.print();
-    }
-
-    // Send All Notes Off (CC 123) for all channels (MIDI uses 0-15)
-    for (let channel = 0; channel < 16; channel++) {
-      dispatchMidiEvent({ type: "cc", controller: 123, value: 0, channel });
-    }
+    workletNode.port.postMessage({
+      type: "loadMidi",
+      events,
+      durationSamples,
+    });
   }
 
   function play(): void {
-    if (isPlaying || !parsedMidi) return;
+    if (isPlaying || !parsedMidi || !workletNode || !workletReady) return;
+
     isPlaying = true;
-    startScheduler();
+    jitterStats.clear();
+    eventStats.clear();
+
+    // Re-send MIDI data in case tempo changed
+    sendMidiToWorklet();
+
+    // Get current sample frame for precise start time
+    // Note: We need to account for the message delay to worklet
+    // Using a slightly future time helps ensure accurate start
+    const startSample = Math.floor(ctx.currentTime * ctx.sampleRate);
+    playStartSample = startSample;
+
+    workletNode.port.postMessage({
+      type: "play",
+      startSample,
+    });
+
+    // Update loop state
+    workletNode.port.postMessage({
+      type: "setLoop",
+      loop: currentState?.loop ?? false,
+    });
   }
 
   function stop(): void {
     if (!isPlaying) return;
     isPlaying = false;
-    stopScheduler();
+
+    workletNode?.port.postMessage({ type: "stop" });
+
+    if (MIDI_DEBUG) {
+      jitterStats.print();
+      eventStats.print();
+    }
   }
 
   async function loadMidi(midiId: string): Promise<void> {
@@ -574,47 +385,69 @@ function createMidiPlayerRuntime(
     try {
       parsedMidi = await getMidiManager().getParsedMidi(midiId);
       loadedMidiId = midiId;
-      buildTempoMap();
+
+      // Initialize worklet if needed and send MIDI data
+      await initWorklet();
+      sendMidiToWorklet();
     } catch (e) {
       console.error("Failed to load MIDI:", e);
       parsedMidi = null;
       loadedMidiId = null;
-      tempoMap = [];
     }
   }
 
   return {
     type: "midiPlayer",
+
     updateState: async (state) => {
       const midiChanged = state.midiId !== currentState?.midiId;
       const tempoChanged =
         state.tempoMultiplier !== currentState?.tempoMultiplier;
+      const loopChanged = state.loop !== currentState?.loop;
       currentState = state;
 
       // Load MIDI if changed
       if (state.midiId && midiChanged) {
-        stop(); // Stop playback when MIDI changes
+        stop();
         await loadMidi(state.midiId);
       }
 
-      // Rebuild tempo map if tempo multiplier changed
-      if (tempoChanged && parsedMidi) {
-        buildTempoMap();
+      // Re-send MIDI data if tempo changed (sample times need recalculation)
+      if (tempoChanged && parsedMidi && workletReady) {
+        const wasPlaying = isPlaying;
+        if (wasPlaying) stop();
+        sendMidiToWorklet();
+        if (wasPlaying) play();
+      }
+
+      // Update loop state
+      if (loopChanged && workletNode) {
+        workletNode.port.postMessage({
+          type: "setLoop",
+          loop: state.loop,
+        });
       }
 
       if (!state.midiId) {
         stop();
         parsedMidi = null;
         loadedMidiId = null;
-        tempoMap = [];
       }
     },
+
     setGraphRef: (graph) => {
       graphRef = graph;
     },
+
     onRemove: () => {
       stop();
+      if (workletNode) {
+        workletNode.port.close();
+        workletNode.disconnect();
+        workletNode = null;
+      }
     },
+
     handleCommand: (command: string) => {
       if (command === "play") {
         play();
@@ -628,11 +461,19 @@ function createMidiPlayerRuntime(
         }
       }
     },
+
     getRuntimeState: (): MidiPlayerRuntimeState => {
       let currentTick = 0;
-      if (parsedMidi && isPlaying && schedulerInterval !== null) {
-        const elapsed = ctx.currentTime - playStartTime;
-        currentTick = playStartTick + secondsToTick(elapsed);
+      if (parsedMidi && isPlaying) {
+        // Estimate current tick from elapsed samples
+        const currentSample = Math.floor(ctx.currentTime * ctx.sampleRate);
+        const elapsedSamples = currentSample - playStartSample;
+        // Rough estimate using average tempo (could be more precise with tempo map)
+        const tempoMultiplier = currentState?.tempoMultiplier ?? 1;
+        const bpm = (parsedMidi.tempoChanges[0]?.bpm ?? 120) * tempoMultiplier;
+        const samplesPerTick =
+          (60 / bpm / parsedMidi.ticksPerBeat) * ctx.sampleRate;
+        currentTick = Math.floor(elapsedSamples / samplesPerTick);
       }
       return {
         midiId: currentState?.midiId ?? null,
