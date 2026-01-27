@@ -16,6 +16,93 @@ export type MidiPlayerRuntimeState = {
 const LOOKAHEAD_MS = 100;
 const SCHEDULE_INTERVAL_MS = 25;
 
+// Set to true to enable MIDI debug instrumentation (jitter + event stats)
+const MIDI_DEBUG = false;
+
+// Jitter measurement
+const jitterStats = {
+  samples: [] as number[],
+  maxSamples: 200,
+  add(jitterMs: number) {
+    if (!MIDI_DEBUG) return;
+    this.samples.push(jitterMs);
+    if (this.samples.length > this.maxSamples) this.samples.shift();
+  },
+  getStats() {
+    if (this.samples.length === 0) return null;
+    const sorted = [...this.samples].sort((a, b) => a - b);
+    const avg = sorted.reduce((a, b) => a + b, 0) / sorted.length;
+    const p50 = sorted[Math.floor(sorted.length * 0.5)];
+    const p95 = sorted[Math.floor(sorted.length * 0.95)];
+    const p99 = sorted[Math.floor(sorted.length * 0.99)];
+    const max = sorted[sorted.length - 1];
+    return { avg, p50, p95, p99, max, count: sorted.length };
+  },
+  clear() {
+    this.samples = [];
+  },
+  print() {
+    const stats = this.getStats();
+    if (!stats) {
+      console.log("No jitter data collected yet");
+      return;
+    }
+    console.log(
+      `MIDI Jitter (ms): avg=${stats.avg.toFixed(2)}, p50=${stats.p50.toFixed(2)}, ` +
+        `p95=${stats.p95.toFixed(2)}, p99=${stats.p99.toFixed(2)}, max=${stats.max.toFixed(2)} (n=${stats.count})`
+    );
+  },
+};
+
+// Event tracking stats
+const eventStats = {
+  scheduled: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 },
+  dispatched: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 },
+  droppedByStopped: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 },
+  schedule(type: "noteOn" | "noteOff" | "cc" | "pitchBend") {
+    if (!MIDI_DEBUG) return;
+    this.scheduled[type]++;
+  },
+  dispatch(type: "noteOn" | "noteOff" | "cc" | "pitchBend") {
+    if (!MIDI_DEBUG) return;
+    this.dispatched[type]++;
+  },
+  dropByStopped(type: "noteOn" | "noteOff" | "cc" | "pitchBend") {
+    if (!MIDI_DEBUG) return;
+    this.droppedByStopped[type]++;
+  },
+  clear() {
+    this.scheduled = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 };
+    this.dispatched = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 };
+    this.droppedByStopped = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 };
+  },
+  print() {
+    const types = ["noteOn", "noteOff", "cc", "pitchBend"] as const;
+    console.log("MIDI Event Stats:");
+    for (const type of types) {
+      const sched = this.scheduled[type];
+      const disp = this.dispatched[type];
+      const dropped = this.droppedByStopped[type];
+      if (sched > 0) {
+        const dropRate = sched > 0 ? ((dropped / sched) * 100).toFixed(1) : "0";
+        console.log(
+          `  ${type}: scheduled=${sched}, dispatched=${disp}, droppedByStopped=${dropped} (${dropRate}%)`
+        );
+      }
+    }
+    const totalSched = types.reduce((sum, t) => sum + this.scheduled[t], 0);
+    const totalDisp = types.reduce((sum, t) => sum + this.dispatched[t], 0);
+    const totalDropped = types.reduce((sum, t) => sum + this.droppedByStopped[t], 0);
+    console.log(
+      `  TOTAL: scheduled=${totalSched}, dispatched=${totalDisp}, droppedByStopped=${totalDropped}`
+    );
+  },
+};
+
+// Expose to window for debugging (always available, but stats only collected when MIDI_DEBUG=true)
+(globalThis as any).__midiJitterStats = jitterStats;
+(globalThis as any).__midiEventStats = eventStats;
+
 function createMidiPlayerRuntime(
   ctx: AudioContext,
   nodeId: NodeId,
@@ -174,23 +261,41 @@ function createMidiPlayerRuntime(
     channel: number,
     timeFromNow: number
   ): void {
+    eventStats.schedule("noteOn");
     if (timeFromNow <= 0) {
+      eventStats.dispatch("noteOn");
       dispatchMidiEvent({ type: "noteOn", note, velocity, channel });
     } else {
+      const scheduledAt = performance.now();
+      const intendedFireTime = scheduledAt + timeFromNow * 1000;
       setTimeout(() => {
+        const actualFireTime = performance.now();
+        const jitter = actualFireTime - intendedFireTime;
+        jitterStats.add(jitter);
         if (isPlaying) {
+          eventStats.dispatch("noteOn");
           dispatchMidiEvent({ type: "noteOn", note, velocity, channel });
+        } else {
+          eventStats.dropByStopped("noteOn");
         }
       }, timeFromNow * 1000);
     }
   }
 
   function scheduleNoteOff(note: number, channel: number, timeFromNow: number): void {
+    eventStats.schedule("noteOff");
     if (timeFromNow <= 0) {
+      eventStats.dispatch("noteOff");
       dispatchMidiEvent({ type: "noteOff", note, channel });
     } else {
+      const scheduledAt = performance.now();
+      const intendedFireTime = scheduledAt + timeFromNow * 1000;
       setTimeout(() => {
+        const actualFireTime = performance.now();
+        const jitter = actualFireTime - intendedFireTime;
+        jitterStats.add(jitter);
         // Always send note-off even if stopped (to release held notes)
+        eventStats.dispatch("noteOff");
         dispatchMidiEvent({ type: "noteOff", note, channel });
       }, timeFromNow * 1000);
     }
@@ -237,9 +342,11 @@ function createMidiPlayerRuntime(
           const eventKey = `cc-${cc.tick}-${cc.channel}-${cc.controller}`;
           if (!scheduledEvents.has(eventKey)) {
             scheduledEvents.add(eventKey);
+            eventStats.schedule("cc");
             const ccTime = playStartTime + tickToSeconds(cc.tick - playStartTick);
             const timeFromNow = ccTime - currentTime;
             if (timeFromNow <= 0) {
+              eventStats.dispatch("cc");
               dispatchMidiEvent({
                 type: "cc",
                 controller: cc.controller,
@@ -247,14 +354,21 @@ function createMidiPlayerRuntime(
                 channel: cc.channel,
               });
             } else {
+              const scheduledAt = performance.now();
+              const intendedFireTime = scheduledAt + timeFromNow * 1000;
               setTimeout(() => {
+                const actualFireTime = performance.now();
+                jitterStats.add(actualFireTime - intendedFireTime);
                 if (isPlaying) {
+                  eventStats.dispatch("cc");
                   dispatchMidiEvent({
                     type: "cc",
                     controller: cc.controller,
                     value: cc.value,
                     channel: cc.channel,
                   });
+                } else {
+                  eventStats.dropByStopped("cc");
                 }
               }, timeFromNow * 1000);
             }
@@ -268,22 +382,31 @@ function createMidiPlayerRuntime(
           const eventKey = `pb-${pb.tick}-${pb.channel}`;
           if (!scheduledEvents.has(eventKey)) {
             scheduledEvents.add(eventKey);
+            eventStats.schedule("pitchBend");
             const pbTime = playStartTime + tickToSeconds(pb.tick - playStartTick);
             const timeFromNow = pbTime - currentTime;
             if (timeFromNow <= 0) {
+              eventStats.dispatch("pitchBend");
               dispatchMidiEvent({
                 type: "pitchBend",
                 value: pb.value,
                 channel: pb.channel,
               });
             } else {
+              const scheduledAt = performance.now();
+              const intendedFireTime = scheduledAt + timeFromNow * 1000;
               setTimeout(() => {
+                const actualFireTime = performance.now();
+                jitterStats.add(actualFireTime - intendedFireTime);
                 if (isPlaying) {
+                  eventStats.dispatch("pitchBend");
                   dispatchMidiEvent({
                     type: "pitchBend",
                     value: pb.value,
                     channel: pb.channel,
                   });
+                } else {
+                  eventStats.dropByStopped("pitchBend");
                 }
               }, timeFromNow * 1000);
             }
@@ -301,6 +424,8 @@ function createMidiPlayerRuntime(
     playStartTick = 0;
     lastScheduledTick = 0;
     scheduledEvents.clear();
+    jitterStats.clear();
+    eventStats.clear();
 
     schedulerInterval = window.setInterval(() => {
       if (!parsedMidi || !isPlaying) return;
@@ -337,6 +462,12 @@ function createMidiPlayerRuntime(
       schedulerInterval = null;
     }
     scheduledEvents.clear();
+
+    // Print stats when stopping (only if debug enabled)
+    if (MIDI_DEBUG) {
+      jitterStats.print();
+      eventStats.print();
+    }
 
     // Send All Notes Off (CC 123) for all channels (MIDI uses 0-15)
     for (let channel = 0; channel < 16; channel++) {
