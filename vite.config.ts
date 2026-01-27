@@ -3,8 +3,17 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { build } from "esbuild";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import wasm from "vite-plugin-wasm";
 import { aliases } from "./aliases";
+
+function getBuildRevision(): string {
+  try {
+    return execSync("git rev-parse --short HEAD").toString().trim();
+  } catch {
+    return "unknown";
+  }
+}
 
 function computeBase(): string {
   if (process.env.VITE_BASE) return process.env.VITE_BASE;
@@ -80,6 +89,9 @@ export default defineConfig(() => ({
   plugins: [wasm(), audioWorkletPlugin(), react()],
   resolve: {
     alias: aliases,
+  },
+  define: {
+    __BUILD_REVISION__: JSON.stringify(getBuildRevision()),
   },
   build: {
     target: "esnext",

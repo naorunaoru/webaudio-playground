@@ -150,6 +150,15 @@ export class AudioEngine {
     return out;
   }
 
+  /**
+   * Send a runtime command to a specific node.
+   * Commands are ephemeral actions (play, stop, etc.) that should not be persisted.
+   */
+  sendCommand(nodeId: NodeId, command: string, payload?: unknown): void {
+    const instance = this.audioNodes.get(nodeId);
+    instance?.handleCommand?.(command, payload);
+  }
+
   getOutputWaveform(length = 256): Float32Array | null {
     const analyser = this.masterMeter;
     const buffer = this.masterMeterBuffer;

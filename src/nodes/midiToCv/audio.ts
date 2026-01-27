@@ -48,6 +48,7 @@ function createMidiToCvRuntime(
   dispatchEvent: DispatchEventFn
 ): AudioNodeInstance<MidiToCvGraphNode> {
   let graphRef: GraphState | null = null;
+  let currentState: MidiToCvGraphNode["state"] | null = null;
 
   // Create voice allocator
   const allocator = new VoiceAllocator(8, {
@@ -61,6 +62,11 @@ function createMidiToCvRuntime(
   const noteToVoice = new Map<number, number>();
   // Map from MIDI channel to voice index for MPE (pitch bend, aftertouch)
   const channelToVoice = new Map<number, number>();
+
+  // Sustain pedal state per channel (CC 64)
+  const sustainActive = new Map<number, boolean>();
+  // Notes held by sustain pedal: Map<note, { voiceIdx, channel }>
+  const sustainedNotes = new Map<number, { voiceIdx: number; channel: number }>();
 
   // Create ConstantSourceNodes for all voices
   const pitchSources: ConstantSourceNode[] = [];
@@ -149,6 +155,22 @@ function createMidiToCvRuntime(
     const voiceIdx = noteToVoice.get(note);
     if (voiceIdx === undefined) return;
 
+    // If sustain pedal is active, hold the note instead of releasing
+    if (sustainActive.get(channel)) {
+      sustainedNotes.set(note, { voiceIdx, channel });
+      // Keep note in noteToVoice so pitch bend etc. still work
+      return;
+    }
+
+    releaseVoice(note, voiceIdx, channel, releaseVelocity);
+  }
+
+  function releaseVoice(
+    note: number,
+    voiceIdx: number,
+    channel: number,
+    releaseVelocity?: number
+  ) {
     // Keep pitch CV at current value - envelope release needs it!
 
     // Update lift CV if release velocity provided (MPE)
@@ -160,6 +182,7 @@ function createMidiToCvRuntime(
     // Clear note-to-voice and channel-to-voice mappings
     noteToVoice.delete(note);
     channelToVoice.delete(channel);
+    sustainedNotes.delete(note);
 
     // Mark voice as note-off in allocator (consumers may still hold it)
     allocator.noteOff(voiceIdx);
@@ -173,6 +196,40 @@ function createMidiToCvRuntime(
         time: ctx.currentTime,
       });
     }
+  }
+
+  function handleSustainPedal(value: number, channel: number) {
+    const isOn = value >= 64;
+    const wasOn = sustainActive.get(channel) ?? false;
+    sustainActive.set(channel, isOn);
+
+    // When sustain pedal is released, release all sustained notes on this channel
+    if (wasOn && !isOn) {
+      for (const [note, held] of sustainedNotes) {
+        if (held.channel === channel) {
+          releaseVoice(note, held.voiceIdx, held.channel);
+        }
+      }
+    }
+  }
+
+  function handleAllNotesOff(channel: number) {
+    // Release all active notes on this channel
+    for (const [note, voiceIdx] of noteToVoice) {
+      const noteChannel = channelToVoice.get(channel);
+      // Release if this voice is on the specified channel, or release all if we can't tell
+      if (noteChannel === voiceIdx || noteChannel === undefined) {
+        releaseVoice(note, voiceIdx, channel);
+      }
+    }
+    // Also clear any sustained notes on this channel
+    for (const [note, held] of sustainedNotes) {
+      if (held.channel === channel) {
+        releaseVoice(note, held.voiceIdx, held.channel);
+      }
+    }
+    // Clear sustain state for this channel
+    sustainActive.delete(channel);
   }
 
   function handlePitchBend(value: number, channel: number) {
@@ -207,6 +264,7 @@ function createMidiToCvRuntime(
     type: "midiToCv",
     voiceAllocator: allocator,
     updateState: (state) => {
+      currentState = state;
       const currentCount = allocator.getVoiceCount();
       if (state.voiceCount !== currentCount) {
         // Ensure we have enough audio nodes first
@@ -240,6 +298,12 @@ function createMidiToCvRuntime(
     handleMidi: (event: MidiEvent, portId) => {
       if (portId && portId !== "midi_in") return;
 
+      // Channel filtering: 0 = all channels, 1-16 = specific channel
+      const targetChannel = currentState?.channel ?? 0;
+      if (targetChannel !== 0 && event.channel !== targetChannel) {
+        return; // Ignore events on non-matching channels
+      }
+
       if (event.type === "noteOn") {
         handleNoteOn(event.note, event.velocity, event.channel);
       } else if (event.type === "noteOff") {
@@ -250,8 +314,14 @@ function createMidiToCvRuntime(
         handleAftertouch(event.value, event.channel);
       } else if (event.type === "polyAftertouch") {
         handlePolyAftertouch(event.note, event.value);
+      } else if (event.type === "cc" && event.controller === 64) {
+        // Sustain pedal (CC 64)
+        handleSustainPedal(event.value, event.channel);
+      } else if (event.type === "cc" && event.controller === 123) {
+        // All Notes Off (CC 123)
+        handleAllNotesOff(event.channel);
       }
-      // CC events are passed through but not processed here
+      // Other CC events are passed through but not processed here
     },
     onRemove: () => {
       const allSources = [

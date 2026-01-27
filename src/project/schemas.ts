@@ -12,6 +12,7 @@ export const MetaSchema = z.object({
   projectName: z.string().optional(),
   createdAt: z.number().optional(),
   exportedAt: z.number().optional(),
+  buildRevision: z.string().optional(),
 });
 
 export type ProjectMeta = z.infer<typeof MetaSchema>;
