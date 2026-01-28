@@ -3,6 +3,7 @@ import {
   useContext,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
 } from "react";
 import type { Selected, NodeId, ConnectionId } from "@graph/types";
@@ -37,12 +38,10 @@ export function SelectionProvider({ children }: { children: ReactNode }) {
     setSelected({ type: "none" });
   }, []);
 
-  const value: SelectionContextValue = {
-    selected,
-    selectNodes,
-    selectConnection,
-    deselect,
-  };
+  const value: SelectionContextValue = useMemo(
+    () => ({ selected, selectNodes, selectConnection, deselect }),
+    [selected, selectNodes, selectConnection, deselect],
+  );
 
   return (
     <SelectionContext.Provider value={value}>

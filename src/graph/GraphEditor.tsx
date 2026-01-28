@@ -15,20 +15,17 @@ import type {
   GraphNode,
   PortKind,
 } from "./types";
-import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
-import {
-  bezierPath,
-  localPointFromPointerEvent,
-  viewToWorld,
-} from "./coordinates";
+import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT } from "./layout";
+import { bezierPath } from "./coordinates";
 import { canConnect, portColumnIndex, portMetaForNode } from "./graphUtils";
-import { useDragInteraction, useNodeWidths } from "./hooks";
+import { useNodeWidths } from "./hooks";
 import {
-  DragConnectionPreview,
+  DragInteractionLayer,
   GraphConnectionPath,
   GraphHUD,
   GraphNodeCardContainer,
 } from "./components";
+import type { DragInteractionLayerHandle } from "./components";
 import { createId } from "./id";
 import {
   useGraphStore,
@@ -75,6 +72,8 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     const { nodeWidths, registerNodeEl } = useNodeWidths();
 
+    const dragLayerRef = useRef<DragInteractionLayerHandle>(null);
+
     const handleMoveNodes = useCallback(
       (moves: Map<string, { x: number; y: number }>) => {
         for (const [nodeId, pos] of moves) {
@@ -113,15 +112,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       },
       [store, addConnection]
     );
-
-    const { drag, setDrag } = useDragInteraction({
-      rootRef,
-      scrollRef,
-      onMoveNodes: handleMoveNodes,
-      onConnect: handleConnect,
-      onDragStart: startBatch,
-      onDragEnd: endBatch,
-    });
 
     // Scroll tracking
     useEffect(() => {
@@ -321,11 +311,11 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           }
         }
         if (e.key === "Escape") {
-          setDrag({ type: "none" });
+          dragLayerRef.current?.endDrag();
           deselect();
         }
       },
-      [selected, setDrag, deleteNode, deleteConnection, deselect]
+      [selected, deleteNode, deleteConnection, deselect]
     );
 
     const handleSelectNode = useCallback(
@@ -373,14 +363,11 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     const handleStartNodeDrag = useCallback(
       (nodeId: string, pointerX: number, pointerY: number) => {
-        // If clicked node is part of selection, drag all selected nodes
-        // Otherwise just drag the clicked node
         const nodesToDrag =
           selected.type === "nodes" && selected.nodeIds.has(nodeId)
             ? selected.nodeIds
             : new Set([nodeId]);
 
-        // Build offsets for all nodes
         const nodeOffsets = new Map<
           string,
           { offsetX: number; offsetY: number }
@@ -395,130 +382,26 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           }
         }
 
-        setDrag({ type: "moveNodes", nodeOffsets });
+        dragLayerRef.current?.startNodeDrag(nodeOffsets);
       },
-      [store, selected, setDrag]
+      [store, selected]
     );
 
     const handleStartConnectionDrag = useCallback(
       (from: ConnectionEndpoint, kind: PortKind, x: number, y: number) => {
-        setDrag({ type: "connect", from, kind, toX: x, toY: y });
+        dragLayerRef.current?.startConnectionDrag(from, kind, x, y);
       },
-      [setDrag]
+      []
     );
 
     const handleEndDrag = useCallback(() => {
-      setDrag({ type: "none" });
-    }, [setDrag]);
+      dragLayerRef.current?.endDrag();
+    }, []);
 
-    // Marquee selection handlers
-    const handleWorldPointerDown = useCallback(
-      (e: React.PointerEvent) => {
-        if (e.button !== 0) return;
-        if (drag.type !== "none") return;
-
-        const root = rootRef.current;
-        if (!root) return;
-
-        const local = localPointFromPointerEvent(root, e);
-        const world = viewToWorld(
-          local,
-          scrollRef.current.x,
-          scrollRef.current.y
-        );
-
-        setDrag({
-          type: "marquee",
-          startX: world.x,
-          startY: world.y,
-          currentX: world.x,
-          currentY: world.y,
-        });
-
-        deselect();
-      },
-      [drag.type, setDrag, deselect]
+    const getNode = useCallback(
+      (nodeId: string) => store.getNode(nodeId),
+      [store]
     );
-
-    const handleWorldPointerMove = useCallback(
-      (e: React.PointerEvent) => {
-        if (drag.type !== "marquee") return;
-
-        const root = rootRef.current;
-        if (!root) return;
-
-        const local = localPointFromPointerEvent(root, e);
-        const world = viewToWorld(
-          local,
-          scrollRef.current.x,
-          scrollRef.current.y
-        );
-
-        setDrag({
-          ...drag,
-          currentX: world.x,
-          currentY: world.y,
-        });
-      },
-      [drag, setDrag]
-    );
-
-    const handleWorldPointerUp = useCallback(
-      (e: React.PointerEvent) => {
-        if (drag.type !== "marquee") return;
-
-        const root = rootRef.current;
-        if (!root) return;
-
-        const local = localPointFromPointerEvent(root, e);
-        const world = viewToWorld(
-          local,
-          scrollRef.current.x,
-          scrollRef.current.y
-        );
-
-        const minX = Math.min(drag.startX, world.x);
-        const maxX = Math.max(drag.startX, world.x);
-        const minY = Math.min(drag.startY, world.y);
-        const maxY = Math.max(drag.startY, world.y);
-
-        const selectedNodeIds = new Set<string>();
-        for (const nodeId of structural.nodeIds) {
-          const node = store.getNode(nodeId);
-          if (!node) continue;
-
-          const nodeWidth = nodeWidths[node.id] ?? 240;
-          const ports = portMetaForNode(node);
-          const nodeH = nodeHeight(ports.length);
-
-          const nodeRight = node.x + nodeWidth;
-          const nodeBottom = node.y + nodeH;
-
-          if (
-            node.x < maxX &&
-            nodeRight > minX &&
-            node.y < maxY &&
-            nodeBottom > minY
-          ) {
-            selectedNodeIds.add(node.id);
-          }
-        }
-
-        selectNodes(selectedNodeIds);
-        setDrag({ type: "none" });
-      },
-      [drag, structural, store, nodeWidths, selectNodes, setDrag]
-    );
-
-    // Compute marquee rectangle for rendering
-    const marqueeRect = useMemo(() => {
-      if (drag.type !== "marquee") return null;
-      const x = Math.min(drag.startX, drag.currentX);
-      const y = Math.min(drag.startY, drag.currentY);
-      const width = Math.abs(drag.currentX - drag.startX);
-      const height = Math.abs(drag.currentY - drag.startY);
-      return { x, y, width, height };
-    }, [drag]);
 
     if (!store.isInitialized()) {
       return <div className={styles.root}>Loading...</div>;
@@ -535,9 +418,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         <div
           className={styles.world}
           style={{ width: worldSize.width, height: worldSize.height }}
-          onPointerDown={handleWorldPointerDown}
-          onPointerMove={handleWorldPointerMove}
-          onPointerUp={handleWorldPointerUp}
         >
           <svg className={styles.canvas}>
             {renderCache.connectionPaths.map(({ connection, d }) => (
@@ -553,12 +433,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
                 onFocusRoot={handleFocusRoot}
               />
             ))}
-
-            <DragConnectionPreview
-              drag={drag}
-              getNode={(nodeId) => store.getNode(nodeId)}
-              nodeWidths={nodeWidths}
-            />
           </svg>
 
           <div className={styles.nodesLayer}>
@@ -589,17 +463,20 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
             </div>
           </div>
 
-          {marqueeRect && (
-            <div
-              className={styles.marquee}
-              style={{
-                left: marqueeRect.x,
-                top: marqueeRect.y,
-                width: marqueeRect.width,
-                height: marqueeRect.height,
-              }}
-            />
-          )}
+          <DragInteractionLayer
+            ref={dragLayerRef}
+            rootRef={rootRef}
+            scrollRef={scrollRef}
+            onMoveNodes={handleMoveNodes}
+            onConnect={handleConnect}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
+            getNode={getNode}
+            nodeWidths={nodeWidths}
+            structural={structural}
+            selectNodes={selectNodes}
+            deselect={deselect}
+          />
         </div>
 
         <GraphHUD status={status} />
