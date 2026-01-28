@@ -36,6 +36,30 @@ export function EnvelopeEditor({
   const curveDragRef = useRef<CurveDragState | null>(null);
   const markerDragRef = useRef<MarkerDragVisual | null>(null);
   const snapAnimRef = useRef<number | null>(null);
+  const isHoveredRef = useRef(false);
+  const handleRadiusAnimRef = useRef(0);
+  const hoveredSegmentRef = useRef<SegmentIndex | null>(null);
+  const metricsRef = useRef<ReturnType<typeof getCanvasMetrics> | null>(null);
+
+  const updateMetrics = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const metrics = getCanvasMetrics(canvas);
+    metricsRef.current = metrics;
+    if (canvas.width !== metrics.width) canvas.width = metrics.width;
+    if (canvas.height !== metrics.height) canvas.height = metrics.height;
+  };
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    updateMetrics();
+
+    const ro = new ResizeObserver(() => updateMetrics());
+    ro.observe(canvas);
+    return () => ro.disconnect();
+  }, []);
 
   // Support both controlled and uncontrolled selection
   const isControlled = controlledSelectedPhase !== undefined;
@@ -66,11 +90,21 @@ export function EnvelopeEditor({
     if (!ctx) return;
 
     let raf = 0;
-    const draw = () => {
+    let lastTime = performance.now();
+    const draw = (now: number) => {
+      const dt = now - lastTime;
+      lastTime = now;
+
+      // Animate handle radius: 0 = collapsed, 1 = fully visible
+      const target = isHoveredRef.current || activePointerIdRef.current != null ? 1 : 0;
+      const speed = target === 1 ? 8 : 4; // faster in, slower out
+      const prev = handleRadiusAnimRef.current;
+      handleRadiusAnimRef.current = prev + (target - prev) * Math.min(1, speed * dt / 1000);
+
       const currentPhases = phasesRef.current;
-      const { dpr, width, height } = getCanvasMetrics(canvas);
-      if (canvas.width !== width) canvas.width = width;
-      if (canvas.height !== height) canvas.height = height;
+      const metrics = metricsRef.current;
+      if (!metrics) return;
+      const { dpr, width, height } = metrics;
 
       const runtimeState = getRuntimeState?.();
       const playheads: Playhead[] = [];
@@ -97,7 +131,9 @@ export function EnvelopeEditor({
         activeHandleRef.current,
         selectedHandleRef.current,
         playheads,
-        markerDragRef.current
+        markerDragRef.current,
+        handleRadiusAnimRef.current,
+        hoveredSegmentRef.current
       );
       raf = requestAnimationFrame(draw);
     };
@@ -105,6 +141,9 @@ export function EnvelopeEditor({
     raf = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(raf);
   }, [getRuntimeState]);
+
+  const handlePointerEnter = () => { isHoveredRef.current = true; };
+  const handlePointerLeave = () => { isHoveredRef.current = false; hoveredSegmentRef.current = null; };
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -114,9 +153,9 @@ export function EnvelopeEditor({
     activePointerIdRef.current = e.pointerId;
     canvas.setPointerCapture(e.pointerId);
 
-    const { rect, dpr, width, height } = getCanvasMetrics(canvas);
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
+    const metrics = metricsRef.current;
+    if (!metrics) return;
+    const { rect, dpr } = metrics;
 
     const px = (e.clientX - rect.left) * dpr;
     const py = (e.clientY - rect.top) * dpr;
@@ -182,11 +221,51 @@ export function EnvelopeEditor({
   const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+
+    // Update cursor on hover (when not dragging)
+    if (activePointerIdRef.current == null) {
+      const metrics = metricsRef.current;
+      if (!metrics) return;
+      const { rect, dpr } = metrics;
+      const px = (e.clientX - rect.left) * dpr;
+      const py = (e.clientY - rect.top) * dpr;
+      const coords = createCoordinateSystem(canvas.width, canvas.height, dpr, phases);
+      const hitRadius = 8 * dpr;
+
+      const markers = getMarkerPositions(phases, coords);
+      const hitMarker = findHitMarker(px, py, markers, hitRadius);
+      if (hitMarker !== null) {
+        hoveredSegmentRef.current = null;
+        canvas.style.cursor = "grab";
+        return;
+      }
+
+      const handles = getHandlePositions(phases, coords);
+      const hitHandle = findClosestHandle(px, py, handles, hitRadius);
+      if (hitHandle !== null) {
+        hoveredSegmentRef.current = null;
+        canvas.style.cursor = "grab";
+        return;
+      }
+
+      const segments = getEnvelopeSegmentPoints(phases, coords, 40);
+      const hitSegment = findClosestSegment(px, py, segments, 7 * dpr);
+      if (hitSegment !== null) {
+        hoveredSegmentRef.current = hitSegment;
+        canvas.style.cursor = "ns-resize";
+        return;
+      }
+
+      hoveredSegmentRef.current = null;
+      canvas.style.cursor = "";
+      return;
+    }
+
     if (activePointerIdRef.current !== e.pointerId) return;
 
-    const { rect, dpr, width, height } = getCanvasMetrics(canvas);
-    if (canvas.width !== width) canvas.width = width;
-    if (canvas.height !== height) canvas.height = height;
+    const metrics = metricsRef.current;
+    if (!metrics) return;
+    const { rect, dpr } = metrics;
 
     const px = (e.clientX - rect.left) * dpr;
     const py = (e.clientY - rect.top) * dpr;
@@ -244,7 +323,9 @@ export function EnvelopeEditor({
     // Handle marker drag completion - animate snap to nearest handle
     const markerDrag = markerDragRef.current;
     if (markerDrag) {
-      const { rect, dpr, width, height } = getCanvasMetrics(canvas);
+      const metrics = metricsRef.current;
+      if (!metrics) return;
+      const { rect, dpr, width, height } = metrics;
       const px = (e.clientX - rect.left) * dpr;
 
       const coords = createCoordinateSystem(width, height, dpr, phases);
@@ -352,6 +433,8 @@ export function EnvelopeEditor({
             height: height + HANDLE_BLEED_PX * 2,
             touchAction: "none",
           }}
+          onPointerEnter={handlePointerEnter}
+          onPointerLeave={handlePointerLeave}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerEnd}

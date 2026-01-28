@@ -1,10 +1,7 @@
 import { useState } from "react";
 import type { GraphNode } from "@graph/types";
 import { useRuntimeStateGetter } from "@graph/hooks";
-import type {
-  NodeDefinition,
-  NodeUiProps,
-} from "@/types/graphNodeDefinition";
+import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
 import { Button } from "@ui/components/Button";
 import { EnvelopeEditor } from "@ui/components/EnvelopeEditor";
 import { Label } from "@ui/components/Label";
@@ -61,7 +58,8 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
   const { phases, retrigger } = node.state;
   const [selectedPhase, setSelectedPhase] = useState<number | null>(null);
 
-  const selectedPhaseData = selectedPhase !== null ? phases[selectedPhase] : null;
+  const selectedPhaseData =
+    selectedPhase !== null ? phases[selectedPhase] : null;
 
   const updatePhases = (next: EnvelopePhase[]) => {
     // Deep clone to strip any Automerge proxy references
@@ -72,14 +70,14 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
   const updateSelectedPhase = (updates: Partial<EnvelopePhase>) => {
     if (selectedPhase === null) return;
     const newPhases = phases.map((p, i) =>
-      i === selectedPhase ? { ...p, ...updates } : p
+      i === selectedPhase ? { ...p, ...updates } : p,
     );
     updatePhases(newPhases);
   };
 
   return (
     <ThemeProvider theme={envelopeTheme}>
-      <div style={{ display: "grid", gap: 16 }}>
+      <div style={{ display: "grid", gap: 16, width: "350px" }}>
         <EnvelopeEditor
           phases={phases}
           onChangePhases={updatePhases}
@@ -106,7 +104,7 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
             max={5000}
             step={1}
             label="Time"
-            format={(v) => selectedPhaseData ? Math.round(v).toString() : "—"}
+            format={(v) => (selectedPhaseData ? Math.round(v).toString() : "—")}
             unit="ms"
             width={56}
             onDragStart={startBatch}
@@ -120,7 +118,7 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
             max={1}
             step={0.01}
             label="Level"
-            format={(v) => selectedPhaseData ? v.toFixed(2) : "—"}
+            format={(v) => (selectedPhaseData ? v.toFixed(2) : "—")}
             width={56}
             onDragStart={startBatch}
             onDragEnd={endBatch}
@@ -133,7 +131,7 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
             max={1}
             step={0.01}
             label="Curve"
-            format={(v) => selectedPhaseData ? v.toFixed(2) : "—"}
+            format={(v) => (selectedPhaseData ? v.toFixed(2) : "—")}
             width={56}
             onDragStart={startBatch}
             onDragEnd={endBatch}
@@ -158,9 +156,7 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
           >
             <Button
               aria-pressed={retrigger}
-              onClick={() =>
-                onPatchNode(node.id, { retrigger: !retrigger })
-              }
+              onClick={() => onPatchNode(node.id, { retrigger: !retrigger })}
             >
               {retrigger ? "On" : "Off"}
             </Button>

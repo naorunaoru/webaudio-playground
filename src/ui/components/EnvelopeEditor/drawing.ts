@@ -1,5 +1,5 @@
 import type { EnvelopePhase } from "@nodes/envelope/types";
-import type { HandleIndex } from "./types";
+import type { HandleIndex, SegmentIndex } from "./types";
 import type { SegmentPoints } from "./geometry";
 import {
   createCoordinateSystem,
@@ -51,7 +51,7 @@ function drawGrid(
   h: number,
   dpr: number,
   totalMs: number,
-  xOfMs: (ms: number) => number
+  xOfMs: (ms: number) => number,
 ) {
   ctx.strokeStyle = "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1 * dpr;
@@ -77,13 +77,13 @@ function drawGrid(
 function drawCurve(
   ctx: CanvasRenderingContext2D,
   segments: SegmentPoints[],
-  dpr: number
+  dpr: number,
 ) {
   if (segments.length === 0) return;
 
   // Draw all segments as one continuous path
   ctx.strokeStyle = "rgba(236,239,244,0.9)";
-  ctx.lineWidth = 1.75 * dpr;
+  ctx.lineWidth = 1.25 * dpr;
   ctx.beginPath();
 
   let started = false;
@@ -107,7 +107,7 @@ function drawDashedLine(
   pad: number,
   h: number,
   dpr: number,
-  color: string
+  color: string,
 ) {
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.5 * dpr;
@@ -126,7 +126,7 @@ function drawMarkerLines(
   pad: number,
   h: number,
   dpr: number,
-  markerDrag?: MarkerDragVisual | null
+  markerDrag?: MarkerDragVisual | null,
 ) {
   for (let i = 0; i < segments.length; i++) {
     const phase = phases[i];
@@ -148,9 +148,10 @@ function drawMarkerLines(
 
   // Draw dashed line at dragged marker's current position
   if (markerDrag) {
-    const color = markerDrag.markerType === "loopStart"
-      ? "rgba(129,140,248,0.5)"
-      : "rgba(236,72,153,0.5)";
+    const color =
+      markerDrag.markerType === "loopStart"
+        ? "rgba(129,140,248,0.5)"
+        : "rgba(236,72,153,0.5)";
     drawDashedLine(ctx, markerDrag.currentX, pad, h, dpr, color);
   }
 }
@@ -164,7 +165,7 @@ function drawLoopRegion(
   pad: number,
   h: number,
   xOfMs: (ms: number) => number,
-  cumulativeTimeBeforePhase: (phases: EnvelopePhase[], index: number) => number
+  cumulativeTimeBeforePhase: (phases: EnvelopePhase[], index: number) => number,
 ) {
   // Find loopStart and hold indices
   let loopStartIdx = -1;
@@ -180,8 +181,11 @@ function drawLoopRegion(
 
   // Loop region starts at the END of loopStart phase (where the marker is)
   // and ends at the END of hold phase (where the hold marker is)
-  const startMs = cumulativeTimeBeforePhase(phases, loopStartIdx) + phases[loopStartIdx]!.durationMs;
-  const endMs = cumulativeTimeBeforePhase(phases, holdIdx) + phases[holdIdx]!.durationMs;
+  const startMs =
+    cumulativeTimeBeforePhase(phases, loopStartIdx) +
+    phases[loopStartIdx]!.durationMs;
+  const endMs =
+    cumulativeTimeBeforePhase(phases, holdIdx) + phases[holdIdx]!.durationMs;
 
   const x1 = xOfMs(startMs);
   const x2 = xOfMs(endMs);
@@ -198,7 +202,7 @@ function drawPlayhead(
   h: number,
   xOfMs: (ms: number) => number,
   dpr: number,
-  alpha: number = 0.65
+  alpha: number = 0.65,
 ) {
   const clamped = Math.max(0, Math.min(totalMs, playhead.ms));
   const x = xOfMs(clamped);
@@ -217,9 +221,16 @@ function drawHandle(
   y: number,
   isActive: boolean,
   isSelected: boolean,
-  dpr: number
+  dpr: number,
+  reveal: number,
 ) {
-  const radius = (isActive || isSelected ? 5 : 4) * dpr;
+  // Selected/active handles: always fully visible; others scale with reveal
+  const minRadius = isSelected ? 3 : 2;
+  const maxRadius = isActive || isSelected ? 4 : 3;
+  const radius = (minRadius + (maxRadius - minRadius) * reveal) * dpr;
+
+  const minAlpha = 1;
+  const alpha = minAlpha + (1 - minAlpha) * reveal;
 
   if (isSelected) {
     ctx.fillStyle = "rgba(236,72,153,0.95)";
@@ -229,12 +240,12 @@ function drawHandle(
     ctx.fillStyle = "rgba(236,239,244,0.75)";
   }
 
-  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.globalAlpha = alpha;
   ctx.lineWidth = 2 * dpr;
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
-  ctx.stroke();
+  ctx.globalAlpha = 1;
 }
 
 function drawMarkerHandle(
@@ -242,16 +253,21 @@ function drawMarkerHandle(
   x: number,
   y: number,
   color: string,
-  dpr: number
+  dpr: number,
+  reveal: number = 1,
 ) {
-  const radius = 4 * dpr;
+  const minRadius = 1.5;
+  const maxRadius = 3;
+  const radius = (minRadius + (maxRadius - minRadius) * reveal) * dpr;
+  const alpha = 0.35 + 0.65 * reveal;
+
+  ctx.globalAlpha = alpha;
   ctx.fillStyle = color;
-  ctx.strokeStyle = "rgba(0,0,0,0.35)";
   ctx.lineWidth = 2 * dpr;
   ctx.beginPath();
   ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
-  ctx.stroke();
+  ctx.globalAlpha = 1;
 }
 
 export type MarkerDragVisual = {
@@ -269,7 +285,9 @@ export function drawEnvelope(
   activeHandle: HandleIndex | null,
   selectedHandle: HandleIndex | null,
   playheads: Playhead[],
-  markerDrag?: MarkerDragVisual | null
+  markerDrag?: MarkerDragVisual | null,
+  handleReveal: number = 1,
+  hoveredSegment: SegmentIndex | null = null,
 ) {
   ctx.clearRect(0, 0, width, height);
 
@@ -286,6 +304,34 @@ export function drawEnvelope(
   const segments = getEnvelopeSegmentPoints(phases, coords);
   drawMarkerLines(ctx, phases, segments, pad, h, dpr, markerDrag);
   drawCurve(ctx, segments, dpr);
+
+  // Draw midpoint marker on hovered segment
+  if (hoveredSegment !== null && hoveredSegment < segments.length) {
+    const seg = segments[hoveredSegment]!;
+    const pts = seg.points;
+    const startX = pts[0]!.x;
+    const endX = pts[pts.length - 1]!.x;
+    const midX = (startX + endX) / 2;
+
+    // Find the curve point closest to the horizontal midpoint
+    let bestIdx = 0;
+    let bestDist = Math.abs(pts[0]!.x - midX);
+    for (let i = 1; i < pts.length; i++) {
+      const d = Math.abs(pts[i]!.x - midX);
+      if (d < bestDist) {
+        bestDist = d;
+        bestIdx = i;
+      }
+    }
+    const midPt = pts[bestIdx]!;
+
+    const radius = 2.5 * dpr;
+    ctx.strokeStyle = "rgba(236,239,244,0.55)";
+    ctx.lineWidth = 1.25 * dpr;
+    ctx.beginPath();
+    ctx.arc(midPt.x, midPt.y, radius, 0, Math.PI * 2);
+    ctx.stroke();
+  }
 
   // Draw all playheads with decreasing opacity for secondary voices
   for (let i = 0; i < playheads.length; i++) {
@@ -304,7 +350,8 @@ export function drawEnvelope(
       handle.y,
       activeHandle === i,
       selectedHandle === i,
-      dpr
+      dpr,
+      handleReveal,
     );
   }
 
@@ -316,20 +363,35 @@ export function drawEnvelope(
     const phase = phases[i]!;
     const handle = handles[i]!;
     if (phase.loopStart && !(markerDrag?.markerType === "loopStart")) {
-      drawMarkerHandle(ctx, handle.x, topY, "rgba(129,140,248,0.9)", dpr);
+      drawMarkerHandle(
+        ctx,
+        handle.x,
+        topY,
+        "rgba(129,140,248,0.9)",
+        dpr,
+        handleReveal,
+      );
     }
     if (phase.hold && !(markerDrag?.markerType === "hold")) {
-      drawMarkerHandle(ctx, handle.x, bottomY, "rgba(236,72,153,0.9)", dpr);
+      drawMarkerHandle(
+        ctx,
+        handle.x,
+        bottomY,
+        "rgba(236,72,153,0.9)",
+        dpr,
+        handleReveal,
+      );
     }
   }
 
   // Draw the dragged marker handle at its current drag position
   if (markerDrag) {
-    const color = markerDrag.markerType === "loopStart"
-      ? "rgba(129,140,248,0.9)"
-      : "rgba(236,72,153,0.9)";
+    const color =
+      markerDrag.markerType === "loopStart"
+        ? "rgba(129,140,248,0.9)"
+        : "rgba(236,72,153,0.9)";
     const y = markerDrag.markerType === "loopStart" ? topY : bottomY;
-    drawMarkerHandle(ctx, markerDrag.currentX, y, color, dpr);
+    drawMarkerHandle(ctx, markerDrag.currentX, y, color, dpr, handleReveal);
   }
 }
 
@@ -339,14 +401,18 @@ export function drawEnvelope(
 export function computeLevelAtPhase(
   phases: EnvelopePhase[],
   phaseIndex: number,
-  progress: number
+  progress: number,
 ): number {
   if (phaseIndex < 0 || phases.length === 0) return 0;
-  if (phaseIndex >= phases.length) return phases[phases.length - 1]?.targetLevel ?? 0;
+  if (phaseIndex >= phases.length)
+    return phases[phases.length - 1]?.targetLevel ?? 0;
 
   const phase = phases[phaseIndex]!;
   const prevLevel = phaseIndex > 0 ? phases[phaseIndex - 1]!.targetLevel : 0;
 
   // Linear interpolation (actual shaping is in the processor)
-  return prevLevel + (phase.targetLevel - prevLevel) * Math.max(0, Math.min(1, progress));
+  return (
+    prevLevel +
+    (phase.targetLevel - prevLevel) * Math.max(0, Math.min(1, progress))
+  );
 }
