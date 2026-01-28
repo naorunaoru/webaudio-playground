@@ -76,11 +76,29 @@ const eventStats = {
     this.dispatched[type]++;
   },
   clear() {
-    this.scheduled = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0, programChange: 0 };
-    this.dispatched = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0, programChange: 0 };
+    this.scheduled = {
+      noteOn: 0,
+      noteOff: 0,
+      cc: 0,
+      pitchBend: 0,
+      programChange: 0,
+    };
+    this.dispatched = {
+      noteOn: 0,
+      noteOff: 0,
+      cc: 0,
+      pitchBend: 0,
+      programChange: 0,
+    };
   },
   print() {
-    const types = ["noteOn", "noteOff", "cc", "pitchBend", "programChange"] as const;
+    const types = [
+      "noteOn",
+      "noteOff",
+      "cc",
+      "pitchBend",
+      "programChange",
+    ] as const;
     console.log("MIDI Event Stats:");
     for (const type of types) {
       const sched = this.scheduled[type];
@@ -228,8 +246,20 @@ function flattenMidiToEvents(
     }
   }
 
-  // Sort by sample time
-  events.sort((a, b) => a.sampleTime - b.sampleTime);
+  // Sort by sample time, with setup events (program changes, CCs) before notes
+  // at the same tick. This matches MIDI convention: channel setup must be
+  // processed before note events to ensure correct instrument selection.
+  const eventOrder: Record<FlatMidiEvent["type"], number> = {
+    programChange: 0,
+    cc: 1,
+    pitchBend: 2,
+    noteOff: 3,
+    noteOn: 4,
+  };
+  events.sort(
+    (a, b) =>
+      a.sampleTime - b.sampleTime || eventOrder[a.type] - eventOrder[b.type],
+  );
 
   // Count events for stats
   for (const event of events) {
@@ -363,24 +393,18 @@ function createMidiPlayerRuntime(
     jitterStats.clear();
     eventStats.clear();
 
-    // Send system reset to clear synth state before playback
     dispatchMidiEvent({ type: "systemReset" });
 
     // Re-send MIDI data in case tempo changed
     sendMidiToWorklet();
 
-    // Get current sample frame for precise start time
-    // Note: We need to account for the message delay to worklet
-    // Using a slightly future time helps ensure accurate start
-    const startSample = Math.floor(ctx.currentTime * ctx.sampleRate);
-    playStartSample = startSample;
+    // Record approximate start time for the main-thread tick position estimate.
+    // The actual playback start is determined by the worklet using its own
+    // currentFrame to avoid stale-timestamp races.
+    playStartSample = Math.floor(ctx.currentTime * ctx.sampleRate);
 
-    workletNode.port.postMessage({
-      type: "play",
-      startSample,
-    });
+    workletNode.port.postMessage({ type: "play" });
 
-    // Update loop state
     workletNode.port.postMessage({
       type: "setLoop",
       loop: currentState?.loop ?? false,
