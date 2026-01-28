@@ -5,6 +5,7 @@ import {
   createCoordinateSystem,
   getEnvelopeSegmentPoints,
   getHandlePositions,
+  cumulativeTimeBeforePhase,
 } from "./geometry";
 
 export type Playhead = {
@@ -76,7 +77,6 @@ function drawGrid(
 function drawCurve(
   ctx: CanvasRenderingContext2D,
   segments: SegmentPoints[],
-  phases: EnvelopePhase[],
   dpr: number
 ) {
   if (segments.length === 0) return;
@@ -99,34 +99,95 @@ function drawCurve(
     }
   }
   ctx.stroke();
+}
 
-  // Draw hold indicators
+function drawDashedLine(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  pad: number,
+  h: number,
+  dpr: number,
+  color: string
+) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5 * dpr;
+  ctx.setLineDash([3 * dpr, 3 * dpr]);
+  ctx.beginPath();
+  ctx.moveTo(x, pad);
+  ctx.lineTo(x, pad + h);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawMarkerLines(
+  ctx: CanvasRenderingContext2D,
+  phases: EnvelopePhase[],
+  segments: SegmentPoints[],
+  pad: number,
+  h: number,
+  dpr: number,
+  markerDrag?: MarkerDragVisual | null
+) {
   for (let i = 0; i < segments.length; i++) {
     const phase = phases[i];
-    if (phase?.hold && i < phases.length - 1) {
-      // Draw a small marker at the end of this segment
-      const lastPt = segments[i]!.points[segments[i]!.points.length - 1]!;
-      drawHoldIndicator(ctx, lastPt.x, lastPt.y, dpr);
+    if (i >= phases.length - 1) continue;
+
+    const segment = segments[i]!;
+    const lastPt = segment.points[segment.points.length - 1]!;
+    const x = lastPt.x;
+
+    // Skip the line for the marker being dragged (it'll be drawn at drag position)
+    if (phase?.loopStart && !(markerDrag?.markerType === "loopStart")) {
+      drawDashedLine(ctx, x, pad, h, dpr, "rgba(129,140,248,0.5)");
     }
+
+    if (phase?.hold && !(markerDrag?.markerType === "hold")) {
+      drawDashedLine(ctx, x, pad, h, dpr, "rgba(236,72,153,0.5)");
+    }
+  }
+
+  // Draw dashed line at dragged marker's current position
+  if (markerDrag) {
+    const color = markerDrag.markerType === "loopStart"
+      ? "rgba(129,140,248,0.5)"
+      : "rgba(236,72,153,0.5)";
+    drawDashedLine(ctx, markerDrag.currentX, pad, h, dpr, color);
   }
 }
 
-function drawHoldIndicator(
+/**
+ * Draw a tinted background for the loop region (from loopStart to hold).
+ */
+function drawLoopRegion(
   ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  dpr: number
+  phases: EnvelopePhase[],
+  pad: number,
+  h: number,
+  xOfMs: (ms: number) => number,
+  cumulativeTimeBeforePhase: (phases: EnvelopePhase[], index: number) => number
 ) {
-  const size = 4 * dpr;
-  ctx.fillStyle = "rgba(236,72,153,0.8)";
-  ctx.beginPath();
-  // Draw a small diamond shape
-  ctx.moveTo(x, y - size);
-  ctx.lineTo(x + size, y);
-  ctx.lineTo(x, y + size);
-  ctx.lineTo(x - size, y);
-  ctx.closePath();
-  ctx.fill();
+  // Find loopStart and hold indices
+  let loopStartIdx = -1;
+  let holdIdx = -1;
+
+  for (let i = 0; i < phases.length; i++) {
+    if (phases[i]?.loopStart) loopStartIdx = i;
+    if (phases[i]?.hold) holdIdx = i;
+  }
+
+  // Only draw if both exist and loopStart <= hold
+  if (loopStartIdx < 0 || holdIdx < 0 || loopStartIdx > holdIdx) return;
+
+  // Loop region starts at the END of loopStart phase (where the marker is)
+  // and ends at the END of hold phase (where the hold marker is)
+  const startMs = cumulativeTimeBeforePhase(phases, loopStartIdx) + phases[loopStartIdx]!.durationMs;
+  const endMs = cumulativeTimeBeforePhase(phases, holdIdx) + phases[holdIdx]!.durationMs;
+
+  const x1 = xOfMs(startMs);
+  const x2 = xOfMs(endMs);
+
+  ctx.fillStyle = "rgba(129,140,248,0.08)"; // Subtle indigo tint
+  ctx.fillRect(x1, pad, x2 - x1, h);
 }
 
 function drawPlayhead(
@@ -176,6 +237,29 @@ function drawHandle(
   ctx.stroke();
 }
 
+function drawMarkerHandle(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  color: string,
+  dpr: number
+) {
+  const radius = 4 * dpr;
+  ctx.fillStyle = color;
+  ctx.strokeStyle = "rgba(0,0,0,0.35)";
+  ctx.lineWidth = 2 * dpr;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+export type MarkerDragVisual = {
+  markerType: "loopStart" | "hold";
+  originalPhaseIndex: number;
+  currentX: number;
+};
+
 export function drawEnvelope(
   ctx: CanvasRenderingContext2D,
   width: number,
@@ -184,7 +268,8 @@ export function drawEnvelope(
   phases: EnvelopePhase[],
   activeHandle: HandleIndex | null,
   selectedHandle: HandleIndex | null,
-  playheads: Playhead[]
+  playheads: Playhead[],
+  markerDrag?: MarkerDragVisual | null
 ) {
   ctx.clearRect(0, 0, width, height);
 
@@ -195,8 +280,12 @@ export function drawEnvelope(
 
   drawGrid(ctx, pad, w, h, dpr, totalMs, xOfMs);
 
+  // Draw loop region background (before curve so it's behind)
+  drawLoopRegion(ctx, phases, pad, h, xOfMs, cumulativeTimeBeforePhase);
+
   const segments = getEnvelopeSegmentPoints(phases, coords);
-  drawCurve(ctx, segments, phases, dpr);
+  drawMarkerLines(ctx, phases, segments, pad, h, dpr, markerDrag);
+  drawCurve(ctx, segments, dpr);
 
   // Draw all playheads with decreasing opacity for secondary voices
   for (let i = 0; i < playheads.length; i++) {
@@ -217,6 +306,30 @@ export function drawEnvelope(
       selectedHandle === i,
       dpr
     );
+  }
+
+  // Draw marker handles: loopStart at top, hold at bottom
+  // Skip the dragged marker type in the loop — it's drawn separately below
+  const topY = pad;
+  const bottomY = pad + h;
+  for (let i = 0; i < phases.length - 1; i++) {
+    const phase = phases[i]!;
+    const handle = handles[i]!;
+    if (phase.loopStart && !(markerDrag?.markerType === "loopStart")) {
+      drawMarkerHandle(ctx, handle.x, topY, "rgba(129,140,248,0.9)", dpr);
+    }
+    if (phase.hold && !(markerDrag?.markerType === "hold")) {
+      drawMarkerHandle(ctx, handle.x, bottomY, "rgba(236,72,153,0.9)", dpr);
+    }
+  }
+
+  // Draw the dragged marker handle at its current drag position
+  if (markerDrag) {
+    const color = markerDrag.markerType === "loopStart"
+      ? "rgba(129,140,248,0.9)"
+      : "rgba(236,72,153,0.9)";
+    const y = markerDrag.markerType === "loopStart" ? topY : bottomY;
+    drawMarkerHandle(ctx, markerDrag.currentX, y, color, dpr);
   }
 }
 

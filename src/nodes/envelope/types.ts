@@ -4,6 +4,7 @@ export type EnvelopePhase = {
   durationMs: number;   // Time to reach target level
   shape: number;        // -1 to 1, curve shape
   hold: boolean;        // If true, hold at targetLevel until gate-off
+  loopStart?: boolean;  // If true, marks the start of a loop region
 };
 
 export type EnvelopeState = {

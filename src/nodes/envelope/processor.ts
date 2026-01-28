@@ -16,6 +16,7 @@ type EnvelopePhase = {
   durationMs: number;
   shape: number;
   hold: boolean;
+  loopStart?: boolean;
 };
 
 type EnvelopeParams = {
@@ -81,6 +82,20 @@ function computeReleasePhaseIndex(phases: EnvelopePhase[]): number {
 
   // No hold phases: release starts at the last phase
   return phases.length - 1;
+}
+
+/**
+ * Find the loop start index for a given hold phase.
+ * Searches backwards from holdIndex to find the nearest phase with loopStart=true.
+ * Returns -1 if no loop start is found.
+ */
+function findLoopStartIndex(phases: EnvelopePhase[], holdIndex: number): number {
+  for (let i = holdIndex; i >= 0; i--) {
+    if (phases[i]?.loopStart) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 class EnvelopeProcessor extends AudioWorkletProcessor {
@@ -239,6 +254,17 @@ class EnvelopeProcessor extends AudioWorkletProcessor {
 
       // Check if we should hold (but not on the last phase)
       if (currentPhase?.hold && !isLastPhase) {
+        // Check if there's a loop start to jump back to
+        const loopStartIdx = findLoopStartIndex(phases, voice.phaseIndex);
+        if (loopStartIdx >= 0) {
+          // Loop to the phase AFTER the loopStart marker
+          // (loopStart marks the endpoint, so we start from the next phase)
+          const loopTargetIdx = loopStartIdx + 1;
+          const startLevel = phases[loopStartIdx]!.targetLevel;
+          this.startPhase(voice, loopTargetIdx, startLevel);
+          return;
+        }
+        // No loop start found - original hold behavior
         voice.level = voice.targetLevel;
         voice.isHolding = true;
         return;

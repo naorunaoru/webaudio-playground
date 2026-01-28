@@ -157,3 +157,74 @@ export function togglePhaseHold(
   }));
   return newPhases;
 }
+
+/**
+ * Toggle the loopStart flag on a phase.
+ * loopStart marks where looping begins when a hold phase is reached.
+ * Can only be set on phases at or before a hold phase.
+ */
+export function toggleLoopStart(
+  phases: EnvelopePhase[],
+  index: number
+): EnvelopePhase[] {
+  if (index < 0 || index >= phases.length) {
+    return phases;
+  }
+
+  // Cannot set loopStart on the last phase
+  if (index === phases.length - 1) {
+    return phases;
+  }
+
+  const currentlyLoopStart = phases[index]!.loopStart ?? false;
+
+  // If turning off, just turn off
+  if (currentlyLoopStart) {
+    const newPhases = phases.map((p) => ({ ...p }));
+    newPhases[index]!.loopStart = false;
+    return newPhases;
+  }
+
+  // If turning on, clear loopStart from all other phases first
+  const newPhases = phases.map((p, i) => ({
+    ...p,
+    loopStart: i === index,
+  }));
+  return newPhases;
+}
+
+/**
+ * Move the loopStart marker to a different phase.
+ */
+export function moveLoopStart(
+  phases: EnvelopePhase[],
+  toIndex: number
+): EnvelopePhase[] {
+  if (toIndex < 0 || toIndex >= phases.length - 1) {
+    return phases;
+  }
+
+  const newPhases = phases.map((p, i) => ({
+    ...p,
+    loopStart: i === toIndex,
+  }));
+  return newPhases;
+}
+
+/**
+ * Move the hold marker to a different phase.
+ */
+export function moveHold(
+  phases: EnvelopePhase[],
+  toIndex: number
+): EnvelopePhase[] {
+  if (toIndex < 0 || toIndex >= phases.length - 1) {
+    return phases;
+  }
+
+  const newPhases = phases.map((p, i) => ({
+    ...p,
+    hold: i === toIndex,
+  }));
+  return newPhases;
+}

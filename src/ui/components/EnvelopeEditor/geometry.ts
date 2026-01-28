@@ -266,3 +266,87 @@ export function phaseIndexToMs(
 
   return ms;
 }
+
+export type MarkerType = "loopStart" | "hold";
+
+export type MarkerPosition = {
+  type: MarkerType;
+  phaseIndex: number;
+  x: number;
+  y: number;
+};
+
+/**
+ * Get positions of all markers (loopStart and hold indicators).
+ * loopStart markers are at the top; hold markers are at the bottom.
+ */
+export function getMarkerPositions(
+  phases: EnvelopePhase[],
+  coords: CoordinateSystem
+): MarkerPosition[] {
+  const { xOfMs, pad, h } = coords;
+  const markers: MarkerPosition[] = [];
+  const topY = pad;
+  const bottomY = pad + h;
+
+  let cumulativeMs = 0;
+  for (let i = 0; i < phases.length - 1; i++) { // Exclude last phase
+    const phase = phases[i]!;
+    cumulativeMs += Math.max(0, phase.durationMs);
+    const x = xOfMs(cumulativeMs);
+
+    if (phase.loopStart) {
+      markers.push({ type: "loopStart", phaseIndex: i, x, y: topY });
+    }
+    if (phase.hold) {
+      markers.push({ type: "hold", phaseIndex: i, x, y: bottomY });
+    }
+  }
+
+  return markers;
+}
+
+/**
+ * Find which marker (if any) is hit at a point.
+ */
+export function findHitMarker(
+  px: number,
+  py: number,
+  markers: MarkerPosition[],
+  hitRadius: number
+): MarkerPosition | null {
+  const hitR2 = hitRadius ** 2;
+
+  for (const marker of markers) {
+    const d2 = (marker.x - px) ** 2 + (marker.y - py) ** 2;
+    if (d2 <= hitR2) {
+      return marker;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find the closest handle index to an x-coordinate.
+ * Used for snapping markers when dragging.
+ */
+export function findClosestHandleByX(
+  px: number,
+  handles: HandlePosition[],
+  excludeLastPhase: boolean = true
+): HandleIndex | null {
+  if (handles.length === 0) return null;
+
+  const maxIndex = excludeLastPhase ? handles.length - 1 : handles.length;
+  let closest: { index: HandleIndex; dist: number } | null = null;
+
+  for (let i = 0; i < maxIndex; i++) {
+    const dist = Math.abs(handles[i]!.x - px);
+    if (closest === null || dist < closest.dist) {
+      closest = { index: i, dist };
+    }
+  }
+
+  return closest?.index ?? null;
+}

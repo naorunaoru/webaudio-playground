@@ -69,6 +69,20 @@ function computeReleasePhaseIndex(phases: EnvelopePhase[]): number {
   return phases.length - 1;
 }
 
+/**
+ * Find the loop start index for a given hold phase.
+ * Searches backwards from holdIndex to find the nearest phase with loopStart=true.
+ * Returns -1 if no loop start is found.
+ */
+function findLoopStartIndex(phases: EnvelopePhase[], holdIndex: number): number {
+  for (let i = holdIndex; i >= 0; i--) {
+    if (phases[i]?.loopStart) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 const workletModuleLoadByContext = new WeakMap<AudioContext, Promise<void>>();
 
 function ensureEnvelopeWorkletModuleLoaded(ctx: AudioContext): Promise<void> {
@@ -374,6 +388,17 @@ function createEnvelopeRuntime(
       const isLastPhase = voice.phaseIndex >= phases.length - 1;
 
       if (currentPhase?.hold && !isLastPhase) {
+        // Check if there's a loop start to jump back to
+        const loopStartIdx = findLoopStartIndex(phases, voice.phaseIndex);
+        if (loopStartIdx >= 0) {
+          // Loop to the phase AFTER the loopStart marker
+          // (loopStart marks the endpoint, so we start from the next phase)
+          const loopTargetIdx = loopStartIdx + 1;
+          const startLevel = phases[loopStartIdx]!.targetLevel;
+          startPhaseForVoice(voiceIdx, loopTargetIdx, startLevel);
+          return computeVoiceRuntimeState(voiceIdx);
+        }
+        // No loop start found - original hold behavior
         voice.isHolding = true;
         return {
           voiceIndex: voiceIdx,
