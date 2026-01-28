@@ -38,6 +38,12 @@ function formatEvent(event: MidiEvent): string {
   if (event.type === "polyAftertouch") {
     return `PAT ${formatNote(event.note).padEnd(4)} ${event.value}`;
   }
+  if (event.type === "programChange") {
+    return `PC  ${event.program}`;
+  }
+  if (event.type === "systemReset") {
+    return "RESET";
+  }
   return "???";
 }
 
@@ -54,6 +60,10 @@ function getEventColor(event: MidiEvent): string {
     case "aftertouch":
     case "polyAftertouch":
       return "#facc15"; // yellow
+    case "programChange":
+      return "#fb923c"; // orange
+    case "systemReset":
+      return "#f472b6"; // pink
     default:
       return "#9ca3af"; // gray
   }

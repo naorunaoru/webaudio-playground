@@ -1,5 +1,6 @@
 const SAMPLES_DIR = "samples";
 const MIDI_DIR = "midi";
+const SOUNDFONTS_DIR = "soundfonts";
 
 let rootDirPromise: Promise<FileSystemDirectoryHandle> | null = null;
 
@@ -17,6 +18,11 @@ async function getSamplesDir(): Promise<FileSystemDirectoryHandle> {
 async function getMidiDir(): Promise<FileSystemDirectoryHandle> {
   const root = await getRoot();
   return root.getDirectoryHandle(MIDI_DIR, { create: true });
+}
+
+async function getSoundfontsDir(): Promise<FileSystemDirectoryHandle> {
+  const root = await getRoot();
+  return root.getDirectoryHandle(SOUNDFONTS_DIR, { create: true });
 }
 
 export async function writeFile(filename: string, data: Blob): Promise<string> {
@@ -100,6 +106,55 @@ export async function deleteMidiFile(path: string): Promise<void> {
     }
     const filename = parts[1];
     const dir = await getMidiDir();
+    await dir.removeEntry(filename);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "NotFoundError") {
+      return;
+    }
+    throw e;
+  }
+}
+
+// SoundFont file operations
+
+export async function writeSoundfontFile(
+  filename: string,
+  data: Blob
+): Promise<string> {
+  const dir = await getSoundfontsDir();
+  const fileHandle = await dir.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(data);
+  await writable.close();
+  return `${SOUNDFONTS_DIR}/${filename}`;
+}
+
+export async function readSoundfontFile(path: string): Promise<Blob | null> {
+  try {
+    const parts = path.split("/");
+    if (parts.length !== 2 || parts[0] !== SOUNDFONTS_DIR) {
+      return null;
+    }
+    const filename = parts[1];
+    const dir = await getSoundfontsDir();
+    const fileHandle = await dir.getFileHandle(filename);
+    return fileHandle.getFile();
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "NotFoundError") {
+      return null;
+    }
+    throw e;
+  }
+}
+
+export async function deleteSoundfontFile(path: string): Promise<void> {
+  try {
+    const parts = path.split("/");
+    if (parts.length !== 2 || parts[0] !== SOUNDFONTS_DIR) {
+      return;
+    }
+    const filename = parts[1];
+    const dir = await getSoundfontsDir();
     await dir.removeEntry(filename);
   } catch (e) {
     if (e instanceof DOMException && e.name === "NotFoundError") {

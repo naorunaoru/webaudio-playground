@@ -12,12 +12,13 @@
 // Flattened MIDI event for efficient processing
 type FlatMidiEvent = {
   sampleTime: number; // Pre-computed sample time from song start
-  type: "noteOn" | "noteOff" | "cc" | "pitchBend";
+  type: "noteOn" | "noteOff" | "cc" | "pitchBend" | "programChange";
   note?: number;
   velocity?: number;
   channel: number;
   controller?: number;
   value?: number;
+  program?: number;
 };
 
 type TempoMapEntry = {
@@ -50,12 +51,13 @@ type SchedulerMessage = LoadMidiMessage | PlayMessage | StopMessage | SetLoopMes
 // Output message types
 type MidiEventMessage = {
   type: "midiEvent";
-  eventType: "noteOn" | "noteOff" | "cc" | "pitchBend";
+  eventType: "noteOn" | "noteOff" | "cc" | "pitchBend" | "programChange";
   note?: number;
   velocity?: number;
   channel: number;
   controller?: number;
   value?: number;
+  program?: number;
   scheduledSample: number;
   actualSample: number;
 };
@@ -166,6 +168,8 @@ class MidiPlayerProcessor extends AudioWorkletProcessor {
           msg.value = event.value;
         } else if (event.type === "pitchBend") {
           msg.value = event.value;
+        } else if (event.type === "programChange") {
+          msg.program = event.program;
         }
 
         this.port.postMessage(msg);

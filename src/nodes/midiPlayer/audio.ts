@@ -65,22 +65,22 @@ const jitterStats = {
 
 // Event tracking stats
 const eventStats = {
-  scheduled: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 },
-  dispatched: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 },
-  schedule(type: "noteOn" | "noteOff" | "cc" | "pitchBend") {
+  scheduled: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0, programChange: 0 },
+  dispatched: { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0, programChange: 0 },
+  schedule(type: "noteOn" | "noteOff" | "cc" | "pitchBend" | "programChange") {
     if (!MIDI_DEBUG) return;
     this.scheduled[type]++;
   },
-  dispatch(type: "noteOn" | "noteOff" | "cc" | "pitchBend") {
+  dispatch(type: "noteOn" | "noteOff" | "cc" | "pitchBend" | "programChange") {
     if (!MIDI_DEBUG) return;
     this.dispatched[type]++;
   },
   clear() {
-    this.scheduled = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 };
-    this.dispatched = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0 };
+    this.scheduled = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0, programChange: 0 };
+    this.dispatched = { noteOn: 0, noteOff: 0, cc: 0, pitchBend: 0, programChange: 0 };
   },
   print() {
-    const types = ["noteOn", "noteOff", "cc", "pitchBend"] as const;
+    const types = ["noteOn", "noteOff", "cc", "pitchBend", "programChange"] as const;
     console.log("MIDI Event Stats:");
     for (const type of types) {
       const sched = this.scheduled[type];
@@ -102,12 +102,13 @@ const eventStats = {
 // Flattened MIDI event type (must match processor.ts)
 type FlatMidiEvent = {
   sampleTime: number;
-  type: "noteOn" | "noteOff" | "cc" | "pitchBend";
+  type: "noteOn" | "noteOff" | "cc" | "pitchBend" | "programChange";
   note?: number;
   velocity?: number;
   channel: number;
   controller?: number;
   value?: number;
+  program?: number;
 };
 
 /**
@@ -215,6 +216,16 @@ function flattenMidiToEvents(
         channel: pb.channel,
       });
     }
+
+    // Program changes
+    for (const pc of track.programChanges) {
+      events.push({
+        sampleTime: tickToSample(pc.tick),
+        type: "programChange",
+        program: pc.program,
+        channel: pc.channel,
+      });
+    }
   }
 
   // Sort by sample time
@@ -306,6 +317,12 @@ function createMidiPlayerRuntime(
               value: msg.value,
               channel: msg.channel,
             });
+          } else if (msg.eventType === "programChange") {
+            dispatchMidiEvent({
+              type: "programChange",
+              program: msg.program ?? 0,
+              channel: msg.channel,
+            });
           }
         } else if (msg.type === "playbackEnded") {
           isPlaying = false;
@@ -345,6 +362,9 @@ function createMidiPlayerRuntime(
     isPlaying = true;
     jitterStats.clear();
     eventStats.clear();
+
+    // Send system reset to clear synth state before playback
+    dispatchMidiEvent({ type: "systemReset" });
 
     // Re-send MIDI data in case tempo changed
     sendMidiToWorklet();
