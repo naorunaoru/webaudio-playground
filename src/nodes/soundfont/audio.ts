@@ -81,7 +81,6 @@ function createSoundfontRuntime(
       synthNode = synth.createAudioNode(ctx);
       synthNode.connect(outputGain);
 
-      console.log("[Soundfont] Synth initialized successfully");
       runtimeState.status = "ready";
       runtimeState.error = null;
     } catch (e) {
@@ -128,7 +127,6 @@ function createSoundfontRuntime(
       currentSfontId = await synth.loadSFont(buffer);
       loadedSoundfontId = soundfontId;
       runtimeState.soundfontId = soundfontId;
-      console.log("[Soundfont] Loaded SF2, sfontId:", currentSfontId);
 
       // Query presets from the soundfont
       const sfont = await synth.getSFontObject(currentSfontId);
@@ -162,10 +160,7 @@ function createSoundfontRuntime(
   }
 
   function handleMidiEvent(event: MidiEvent, state: SoundfontGraphNode["state"]): void {
-    if (!synth || currentSfontId === null) {
-      console.log("[Soundfont] handleMidiEvent skipped - synth:", !!synth, "sfontId:", currentSfontId);
-      return;
-    }
+    if (!synth || currentSfontId === null) return;
 
     const sfontId = currentSfontId; // Capture for use in switch
 
@@ -201,7 +196,6 @@ function createSoundfontRuntime(
       case "pitchBend": {
         // MIDI pitch bend is -8192..8191, FluidSynth expects 0..16383
         const fluidPitchBend = event.value + 8192;
-        console.log("[Soundfont] pitchBend ch:", synthChannel, "value:", event.value, "->", fluidPitchBend);
         synth.midiPitchBend(synthChannel, fluidPitchBend);
         break;
       }
