@@ -363,6 +363,9 @@ function createMidiPlayerRuntime(
     jitterStats.clear();
     eventStats.clear();
 
+    // Send system reset to clear synth state before playback
+    dispatchMidiEvent({ type: "systemReset" });
+
     // Re-send MIDI data in case tempo changed
     sendMidiToWorklet();
 

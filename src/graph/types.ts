@@ -106,6 +106,9 @@ export type MidiEvent =
       type: "programChange";
       program: number; // 0..127
       channel: number;
+    }
+  | {
+      type: "systemReset"; // GM System Reset - clears all channel state
     };
 
 /** Gate event: state change with duration (on/off). */

@@ -167,13 +167,26 @@ function createSoundfontRuntime(
       return;
     }
 
+    const sfontId = currentSfontId; // Capture for use in switch
+
+    // Handle system-wide events first (no channel)
+    if (event.type === "systemReset") {
+      synth.midiSystemReset();
+      // Re-initialize drum channel with correct bank
+      try {
+        synth.midiProgramSelect(9, sfontId, 128, 0);
+      } catch {
+        // Ignore errors
+      }
+      return;
+    }
+
     // Channel filtering: state.channel 0 = all, 1-16 = specific channel
     const targetChannel = state.channel;
     if (targetChannel !== 0 && event.channel !== targetChannel - 1) return;
 
     // Preserve original MIDI channel (0-15) for multi-timbral playback
     const synthChannel = event.channel;
-    const sfontId = currentSfontId; // Capture for use in switch
 
     switch (event.type) {
       case "noteOn":
