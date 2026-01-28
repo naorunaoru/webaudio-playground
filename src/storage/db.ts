@@ -1,9 +1,10 @@
 const DB_NAME = "webaudio-playground";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 
 export const STORE_SAMPLES = "samples";
 export const STORE_DOCUMENTS = "documents";
 export const STORE_MIDI = "midi";
+export const STORE_SOUNDFONTS = "soundfonts";
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -40,6 +41,13 @@ export function openDb(): Promise<IDBDatabase> {
       if (oldVersion < 3) {
         if (!db.objectStoreNames.contains(STORE_MIDI)) {
           db.createObjectStore(STORE_MIDI, { keyPath: "id" });
+        }
+      }
+
+      // Version 4: SoundFont files store
+      if (oldVersion < 4) {
+        if (!db.objectStoreNames.contains(STORE_SOUNDFONTS)) {
+          db.createObjectStore(STORE_SOUNDFONTS, { keyPath: "id" });
         }
       }
     };

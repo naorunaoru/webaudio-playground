@@ -101,6 +101,11 @@ export type MidiEvent =
       note: number;
       value: number; // 0..127
       channel: number;
+    }
+  | {
+      type: "programChange";
+      program: number; // 0..127
+      channel: number;
     };
 
 /** Gate event: state change with duration (on/off). */

@@ -21,6 +21,7 @@ import { delayNode } from "./delay";
 import { reverbNode } from "./reverb";
 import { limiterNode } from "./limiter";
 import { samplePlayerNode } from "./samplePlayer";
+import { soundfontNode } from "./soundfont";
 import { audioOutNode } from "./audioOut";
 
 export const NODE_MODULES = {
@@ -45,6 +46,7 @@ export const NODE_MODULES = {
   reverb: reverbNode,
   limiter: limiterNode,
   samplePlayer: samplePlayerNode,
+  soundfont: soundfontNode,
   audioOut: audioOutNode,
 } as const satisfies Record<GraphNode["type"], NodeModule<any>>;
 

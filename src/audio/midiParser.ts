@@ -21,6 +21,12 @@ export type MidiPitchBend = {
   channel: number;
 };
 
+export type MidiProgramChange = {
+  tick: number;
+  program: number; // 0..127
+  channel: number;
+};
+
 export type MidiTempoChange = {
   tick: number;
   bpm: number;
@@ -31,6 +37,7 @@ export type MidiTrack = {
   notes: MidiNote[];
   controlChanges: MidiControlChange[];
   pitchBends: MidiPitchBend[];
+  programChanges: MidiProgramChange[];
 };
 
 export type ParsedMidi = {
@@ -60,6 +67,7 @@ export async function parseMidiFile(buffer: ArrayBuffer): Promise<ParsedMidi> {
       notes: [],
       controlChanges: [],
       pitchBends: [],
+      programChanges: [],
     };
 
     // Track note-on events waiting for note-off
@@ -137,11 +145,23 @@ export async function parseMidiFile(buffer: ArrayBuffer): Promise<ParsedMidi> {
 
       // Pitch bend
       if ("pitchBend" in event) {
-        const pb = event.pitchBend as number;
+        // midi-json-parser returns 0-16383, convert to -8192..8191 for consistency
+        const raw = event.pitchBend as number;
         const channel = (event as { channel: number }).channel;
         parsedTrack.pitchBends.push({
           tick: currentTick,
-          value: pb,
+          value: raw - 8192,
+          channel,
+        });
+      }
+
+      // Program change
+      if ("programChange" in event) {
+        const pc = event.programChange as { programNumber: number };
+        const channel = (event as { channel: number }).channel;
+        parsedTrack.programChanges.push({
+          tick: currentTick,
+          program: pc.programNumber,
           channel,
         });
       }
