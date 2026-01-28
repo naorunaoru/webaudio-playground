@@ -403,6 +403,21 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       [store]
     );
 
+    const handleWorldPointerDown = useCallback(
+      (e: React.PointerEvent) => dragLayerRef.current?.onWorldPointerDown(e),
+      []
+    );
+
+    const handleWorldPointerMove = useCallback(
+      (e: React.PointerEvent) => dragLayerRef.current?.onWorldPointerMove(e),
+      []
+    );
+
+    const handleWorldPointerUp = useCallback(
+      (e: React.PointerEvent) => dragLayerRef.current?.onWorldPointerUp(e),
+      []
+    );
+
     if (!store.isInitialized()) {
       return <div className={styles.root}>Loading...</div>;
     }
@@ -418,6 +433,9 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         <div
           className={styles.world}
           style={{ width: worldSize.width, height: worldSize.height }}
+          onPointerDown={handleWorldPointerDown}
+          onPointerMove={handleWorldPointerMove}
+          onPointerUp={handleWorldPointerUp}
         >
           <svg className={styles.canvas}>
             {renderCache.connectionPaths.map(({ connection, d }) => (

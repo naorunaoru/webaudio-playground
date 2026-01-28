@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import type { GraphState, GraphNode } from "@graph/types";
 import { putSampleFromFile } from "@audio/sampleStore";
 import { putMidiFromFile } from "@audio/midiStore";
+import { putSoundfontFromFile } from "@audio/soundfontStore";
 import { normalizeGraph } from "@graph/graphUtils";
 import {
   MetaSchema,
@@ -39,6 +40,13 @@ type MidiMetaFile = {
   durationTicks: number;
   ticksPerBeat: number;
   trackCount: number;
+};
+
+type SoundfontMetaFile = {
+  id: string;
+  name: string;
+  size: number;
+  createdAt: number;
 };
 
 export async function importProject(file: File): Promise<ImportResult> {
@@ -187,6 +195,47 @@ export async function importProject(file: File): Promise<ImportResult> {
       }
     }
 
+    // Import soundfont files
+    const soundfontIdMap = new Map<string, string>();
+
+    const soundfontFiles = Object.keys(zip.files).filter(
+      (path) =>
+        path.startsWith("soundfonts/") &&
+        !path.endsWith(".meta.json") &&
+        !path.endsWith("/")
+    );
+
+    for (const soundfontPath of soundfontFiles) {
+      const soundfontFile = zip.file(soundfontPath);
+      if (!soundfontFile) continue;
+
+      const filename = soundfontPath.split("/").pop() ?? "";
+      const dotIdx = filename.lastIndexOf(".");
+      const originalId = dotIdx > 0 ? filename.slice(0, dotIdx) : filename;
+
+      const metaPath = `soundfonts/${originalId}.meta.json`;
+      const metaJsonFile = zip.file(metaPath);
+
+      let soundfontMeta: SoundfontMetaFile | null = null;
+      if (metaJsonFile) {
+        try {
+          const metaContent = await metaJsonFile.async("string");
+          soundfontMeta = JSON.parse(metaContent) as SoundfontMetaFile;
+        } catch {
+          warnings.push(`Could not parse metadata for soundfont ${originalId}`);
+        }
+      }
+
+      const blob = await soundfontFile.async("blob");
+
+      const importFile = new File([blob], soundfontMeta?.name ?? filename, {
+        type: "application/octet-stream",
+      });
+
+      const storedSoundfont = await putSoundfontFromFile(importFile);
+      soundfontIdMap.set(originalId, storedSoundfont.id);
+    }
+
     const graph = graphResult.data as GraphState;
     const remappedNodes: GraphNode[] = graph.nodes.map((node) => {
       if (node.type === "samplePlayer") {
@@ -232,6 +281,29 @@ export async function importProject(file: File): Promise<ImportResult> {
           return {
             ...node,
             state: { ...state, midiId: null, midiName: null },
+          } as GraphNode;
+        }
+      }
+      if (node.type === "soundfont") {
+        const state = node.state as {
+          soundfontId: string | null;
+          soundfontName: string | null;
+          [key: string]: unknown;
+        };
+        if (state.soundfontId) {
+          const newId = soundfontIdMap.get(state.soundfontId);
+          if (newId) {
+            return {
+              ...node,
+              state: { ...state, soundfontId: newId },
+            } as GraphNode;
+          }
+          warnings.push(
+            `Soundfont ${state.soundfontId} not found in project, clearing reference`
+          );
+          return {
+            ...node,
+            state: { ...state, soundfontId: null, soundfontName: null },
           } as GraphNode;
         }
       }

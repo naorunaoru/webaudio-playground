@@ -24,6 +24,9 @@ export type DragInteractionLayerHandle = {
     y: number,
   ) => void;
   endDrag: () => void;
+  onWorldPointerDown: (e: React.PointerEvent) => void;
+  onWorldPointerMove: (e: React.PointerEvent) => void;
+  onWorldPointerUp: (e: React.PointerEvent) => void;
 };
 
 type DragInteractionLayerProps = {
@@ -67,29 +70,6 @@ export const DragInteractionLayer = forwardRef<
     onDragStart,
     onDragEnd,
   });
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      startNodeDrag(
-        nodeOffsets: Map<NodeId, { offsetX: number; offsetY: number }>,
-      ) {
-        setDrag({ type: "moveNodes", nodeOffsets });
-      },
-      startConnectionDrag(
-        from: ConnectionEndpoint,
-        kind: PortKind,
-        x: number,
-        y: number,
-      ) {
-        setDrag({ type: "connect", from, kind, toX: x, toY: y });
-      },
-      endDrag() {
-        setDrag({ type: "none" });
-      },
-    }),
-    [setDrag],
-  );
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
@@ -192,6 +172,32 @@ export const DragInteractionLayer = forwardRef<
     ],
   );
 
+  useImperativeHandle(
+    ref,
+    () => ({
+      startNodeDrag(
+        nodeOffsets: Map<NodeId, { offsetX: number; offsetY: number }>,
+      ) {
+        setDrag({ type: "moveNodes", nodeOffsets });
+      },
+      startConnectionDrag(
+        from: ConnectionEndpoint,
+        kind: PortKind,
+        x: number,
+        y: number,
+      ) {
+        setDrag({ type: "connect", from, kind, toX: x, toY: y });
+      },
+      endDrag() {
+        setDrag({ type: "none" });
+      },
+      onWorldPointerDown: handlePointerDown,
+      onWorldPointerMove: handlePointerMove,
+      onWorldPointerUp: handlePointerUp,
+    }),
+    [setDrag, handlePointerDown, handlePointerMove, handlePointerUp],
+  );
+
   const marqueeRect = useMemo(() => {
     if (drag.type !== "marquee") return null;
     const x = Math.min(drag.startX, drag.currentX);
@@ -203,14 +209,6 @@ export const DragInteractionLayer = forwardRef<
 
   return (
     <>
-      {/* Invisible layer to capture marquee pointer events */}
-      <div
-        style={{ position: "absolute", inset: 0 }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-      />
-
       <svg className={styles.canvas}>
         <DragConnectionPreview
           drag={drag}

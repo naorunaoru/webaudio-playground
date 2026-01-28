@@ -2,6 +2,7 @@ import JSZip from "jszip";
 import type { GraphState } from "@graph/types";
 import { getSample, type StoredSample } from "@audio/sampleStore";
 import { getMidi, type StoredMidi } from "@audio/midiStore";
+import { getSoundfont, type StoredSoundfont } from "@audio/soundfontStore";
 import { CURRENT_FORMAT_VERSION, type ProjectMeta } from "./schemas";
 
 type SampleRef = {
@@ -11,6 +12,11 @@ type SampleRef = {
 
 type MidiRef = {
   midiId: string;
+  nodeId: string;
+};
+
+type SoundfontRef = {
+  soundfontId: string;
   nodeId: string;
 };
 
@@ -34,6 +40,19 @@ function collectMidiRefs(graph: GraphState): MidiRef[] {
       const state = node.state as { midiId: string | null };
       if (state.midiId) {
         refs.push({ midiId: state.midiId, nodeId: node.id });
+      }
+    }
+  }
+  return refs;
+}
+
+function collectSoundfontRefs(graph: GraphState): SoundfontRef[] {
+  const refs: SoundfontRef[] = [];
+  for (const node of graph.nodes) {
+    if (node.type === "soundfont") {
+      const state = node.state as { soundfontId: string | null };
+      if (state.soundfontId) {
+        refs.push({ soundfontId: state.soundfontId, nodeId: node.id });
       }
     }
   }
@@ -137,6 +156,37 @@ export async function exportProject(
     midiFolder?.file(
       `${ref.midiId}.meta.json`,
       JSON.stringify(midiMeta, null, 2)
+    );
+  }
+
+  // Export soundfont files
+  const soundfontRefs = collectSoundfontRefs(graph);
+  const soundfontsFolder = zip.folder("soundfonts");
+  const processedSoundfontIds = new Set<string>();
+
+  for (const ref of soundfontRefs) {
+    if (processedSoundfontIds.has(ref.soundfontId)) continue;
+    processedSoundfontIds.add(ref.soundfontId);
+
+    const soundfont = await getSoundfont(ref.soundfontId);
+    if (!soundfont) {
+      console.warn(`Soundfont ${ref.soundfontId} not found in IndexedDB`);
+      continue;
+    }
+
+    const filename = `${ref.soundfontId}.sf2`;
+
+    const soundfontMeta: StoredSoundfont = {
+      id: soundfont.id,
+      name: soundfont.name,
+      size: soundfont.size,
+      createdAt: soundfont.createdAt,
+    };
+
+    soundfontsFolder?.file(filename, soundfont.data);
+    soundfontsFolder?.file(
+      `${ref.soundfontId}.meta.json`,
+      JSON.stringify(soundfontMeta, null, 2)
     );
   }
 
