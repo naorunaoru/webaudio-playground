@@ -6,11 +6,11 @@ import type { CanvasMetrics, HandleIndex, SegmentIndex } from "./types";
 export const HANDLE_BLEED_PX = 8;
 
 export function getCanvasMetrics(canvas: HTMLCanvasElement): CanvasMetrics {
-  const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
   const width = Math.max(1, Math.floor(rect.width * dpr));
   const height = Math.max(1, Math.floor(rect.height * dpr));
-  return { rect, dpr, width, height };
+  return { dpr, width, height };
 }
 
 export function clampMs(v: number): number {

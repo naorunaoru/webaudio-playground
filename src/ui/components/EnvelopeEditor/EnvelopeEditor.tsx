@@ -162,10 +162,10 @@ export function EnvelopeEditor({
 
     const geo = getHitGeometry();
     if (!geo) return;
-    const { rect, dpr } = metricsRef.current!;
+    const { dpr } = metricsRef.current!;
 
-    const px = (e.clientX - rect.left) * dpr;
-    const py = (e.clientY - rect.top) * dpr;
+    const px = e.nativeEvent.offsetX * dpr;
+    const py = e.nativeEvent.offsetY * dpr;
 
     const { handles, markers, segments } = geo;
     const hitRadius = 8 * dpr;
@@ -230,9 +230,9 @@ export function EnvelopeEditor({
     if (activePointerIdRef.current == null) {
       const geo = getHitGeometry();
       if (!geo) return;
-      const { rect, dpr } = metricsRef.current!;
-      const px = (e.clientX - rect.left) * dpr;
-      const py = (e.clientY - rect.top) * dpr;
+      const { dpr } = metricsRef.current!;
+      const px = e.nativeEvent.offsetX * dpr;
+      const py = e.nativeEvent.offsetY * dpr;
       const { handles, markers, segments } = geo;
       const hitRadius = 8 * dpr;
 
@@ -276,10 +276,10 @@ export function EnvelopeEditor({
 
     const geo = getHitGeometry();
     if (!geo) return;
-    const { rect, dpr } = metricsRef.current!;
+    const { dpr } = metricsRef.current!;
 
-    const px = (e.clientX - rect.left) * dpr;
-    const py = (e.clientY - rect.top) * dpr;
+    const px = e.nativeEvent.offsetX * dpr;
+    const py = e.nativeEvent.offsetY * dpr;
 
     const { coords, handles } = geo;
     const nextMs = coords.msOfX(px);
@@ -334,8 +334,8 @@ export function EnvelopeEditor({
     if (markerDrag) {
       const geo = getHitGeometry();
       if (!geo) return;
-      const { rect, dpr } = metricsRef.current!;
-      const px = (e.clientX - rect.left) * dpr;
+      const { dpr } = metricsRef.current!;
+      const px = e.nativeEvent.offsetX * dpr;
 
       const { handles } = geo;
       const snapTarget = findClosestHandleByX(px, handles, true);

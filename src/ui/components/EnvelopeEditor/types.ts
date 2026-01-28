@@ -21,7 +21,6 @@ export type EnvelopeEditorProps = Readonly<{
 }>;
 
 export type CanvasMetrics = {
-  rect: DOMRect;
   dpr: number;
   width: number;
   height: number;
