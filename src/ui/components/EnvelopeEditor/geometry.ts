@@ -1,16 +1,16 @@
 import { invTFromU } from "@utils/envelope";
 import { clamp01 } from "@utils/math";
-import type { EnvelopeEnv } from "@nodes/envelope/types";
-import type { CanvasMetrics, HandleKey } from "./types";
+import type { EnvelopePhase } from "@nodes/envelope/types";
+import type { CanvasMetrics, HandleIndex, SegmentIndex } from "./types";
 
 export const HANDLE_BLEED_PX = 8;
 
 export function getCanvasMetrics(canvas: HTMLCanvasElement): CanvasMetrics {
-  const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
   const width = Math.max(1, Math.floor(rect.width * dpr));
   const height = Math.max(1, Math.floor(rect.height * dpr));
-  return { rect, dpr, width, height };
+  return { dpr, width, height };
 }
 
 export function clampMs(v: number): number {
@@ -29,16 +29,38 @@ export type CoordinateSystem = {
   levelOfY: (y: number) => number;
 };
 
+/**
+ * Compute total duration of all phases.
+ */
+export function computeTotalDuration(phases: EnvelopePhase[]): number {
+  let total = 0;
+  for (const phase of phases) {
+    total += Math.max(0, phase.durationMs);
+  }
+  return total;
+}
+
+/**
+ * Compute cumulative time up to (but not including) a phase index.
+ */
+export function cumulativeTimeBeforePhase(phases: EnvelopePhase[], phaseIndex: number): number {
+  let total = 0;
+  for (let i = 0; i < phaseIndex && i < phases.length; i++) {
+    total += Math.max(0, phases[i]!.durationMs);
+  }
+  return total;
+}
+
 export function createCoordinateSystem(
   canvasWidth: number,
   canvasHeight: number,
   dpr: number,
-  env: EnvelopeEnv
+  phases: EnvelopePhase[]
 ): CoordinateSystem {
   const pad = HANDLE_BLEED_PX * dpr;
   const w = canvasWidth - pad * 2;
   const h = canvasHeight - pad * 2;
-  const totalMs = Math.max(1, env.attackMs + env.decayMs + env.releaseMs);
+  const totalMs = Math.max(1, computeTotalDuration(phases));
 
   return {
     pad,
@@ -52,24 +74,40 @@ export function createCoordinateSystem(
   };
 }
 
-export type HandlePositions = {
-  attack: { x: number; y: number };
-  decay: { x: number; y: number };
-  release: { x: number; y: number };
+export type HandlePosition = {
+  x: number;
+  y: number;
+  phaseIndex: number;
 };
 
+/**
+ * Get positions of all handles (one per phase endpoint).
+ * Handle i is at the end of phase i.
+ */
 export function getHandlePositions(
-  env: EnvelopeEnv,
+  phases: EnvelopePhase[],
   coords: CoordinateSystem
-): HandlePositions {
+): HandlePosition[] {
   const { xOfMs, yOfLevel } = coords;
-  return {
-    attack: { x: xOfMs(env.attackMs), y: yOfLevel(1) },
-    decay: { x: xOfMs(env.attackMs + env.decayMs), y: yOfLevel(env.sustain) },
-    release: { x: xOfMs(env.attackMs + env.decayMs + env.releaseMs), y: yOfLevel(0) },
-  };
+  const handles: HandlePosition[] = [];
+
+  let cumulativeMs = 0;
+  for (let i = 0; i < phases.length; i++) {
+    const phase = phases[i]!;
+    cumulativeMs += Math.max(0, phase.durationMs);
+    handles.push({
+      x: xOfMs(cumulativeMs),
+      y: yOfLevel(phase.targetLevel),
+      phaseIndex: i,
+    });
+  }
+
+  return handles;
 }
 
+/**
+ * Generate points for a single segment (phase curve).
+ */
 export function segmentPoints(
   ms0: number,
   ms1: number,
@@ -78,7 +116,7 @@ export function segmentPoints(
   shape: number,
   xOfMs: (ms: number) => number,
   yOfLevel: (level: number) => number,
-  samples = 96
+  samples = 64
 ): Array<{ x: number; y: number }> {
   const pts: Array<{ x: number; y: number }> = [];
   const span = Math.max(0, ms1 - ms0);
@@ -92,57 +130,74 @@ export function segmentPoints(
   return pts;
 }
 
+export type SegmentPoints = {
+  phaseIndex: number;
+  points: Array<{ x: number; y: number }>;
+};
+
+/**
+ * Get all segment points for drawing the envelope curve.
+ */
 export function getEnvelopeSegmentPoints(
-  env: EnvelopeEnv,
+  phases: EnvelopePhase[],
   coords: CoordinateSystem,
   samples = 64
-) {
+): SegmentPoints[] {
   const { xOfMs, yOfLevel } = coords;
-  const attackPts = segmentPoints(0, env.attackMs, 0, 1, env.attackShape, xOfMs, yOfLevel, samples);
-  const decayPts = segmentPoints(
-    env.attackMs,
-    env.attackMs + env.decayMs,
-    1,
-    env.sustain,
-    env.decayShape,
-    xOfMs,
-    yOfLevel,
-    samples
-  );
-  const releaseStart = env.attackMs + env.decayMs;
-  const releasePts = segmentPoints(
-    releaseStart,
-    releaseStart + env.releaseMs,
-    env.sustain,
-    0,
-    env.releaseShape,
-    xOfMs,
-    yOfLevel,
-    samples
-  );
-  return { attackPts, decayPts, releasePts };
+  const segments: SegmentPoints[] = [];
+
+  let cumulativeMs = 0;
+  let prevLevel = 0;
+
+  for (let i = 0; i < phases.length; i++) {
+    const phase = phases[i]!;
+    const startMs = cumulativeMs;
+    const endMs = startMs + Math.max(0, phase.durationMs);
+    const startLevel = prevLevel;
+    const endLevel = phase.targetLevel;
+
+    const points = segmentPoints(
+      startMs,
+      endMs,
+      startLevel,
+      endLevel,
+      phase.shape,
+      xOfMs,
+      yOfLevel,
+      samples
+    );
+
+    segments.push({ phaseIndex: i, points });
+
+    cumulativeMs = endMs;
+    prevLevel = endLevel;
+  }
+
+  return segments;
 }
 
+/**
+ * Find the closest handle to a point.
+ */
 export function findClosestHandle(
   px: number,
   py: number,
-  handles: HandlePositions,
+  handles: HandlePosition[],
   hitRadius: number
-): HandleKey | null {
-  const dist2 = (x: number, y: number) => (x - px) ** 2 + (y - py) ** 2;
+): HandleIndex | null {
+  const dist2 = (h: HandlePosition) => (h.x - px) ** 2 + (h.y - py) ** 2;
   const hitR2 = hitRadius ** 2;
 
-  const candidates: Array<{ key: HandleKey; d2: number }> = [
-    { key: "a", d2: dist2(handles.attack.x, handles.attack.y) },
-    { key: "d", d2: dist2(handles.decay.x, handles.decay.y) },
-    { key: "r", d2: dist2(handles.release.x, handles.release.y) },
-  ];
+  let closest: { index: HandleIndex; d2: number } | null = null;
 
-  const hits = candidates.filter((h) => h.d2 <= hitR2);
-  if (hits.length === 0) return null;
+  for (let i = 0; i < handles.length; i++) {
+    const d2 = dist2(handles[i]!);
+    if (d2 <= hitR2 && (closest === null || d2 < closest.d2)) {
+      closest = { index: i, d2 };
+    }
+  }
 
-  hits.sort((a, b) => a.d2 - b.d2);
-  return hits[0]!.key;
+  return closest?.index ?? null;
 }
 
 function dist2PointToSegment(
@@ -169,23 +224,129 @@ function minDistToPolyline(p: { x: number; y: number }, pts: Array<{ x: number; 
   return best;
 }
 
+/**
+ * Find the closest segment (phase curve) to a point.
+ */
 export function findClosestSegment(
   px: number,
   py: number,
-  segments: ReturnType<typeof getEnvelopeSegmentPoints>,
+  segments: SegmentPoints[],
   hitRadius: number
-): "attack" | "decay" | "release" | null {
+): SegmentIndex | null {
   const p = { x: px, y: py };
   const hitR2 = hitRadius ** 2;
 
-  const bestAttack = minDistToPolyline(p, segments.attackPts);
-  const bestDecay = minDistToPolyline(p, segments.decayPts);
-  const bestRelease = minDistToPolyline(p, segments.releasePts);
-  const best = Math.min(bestAttack, bestDecay, bestRelease);
+  let closest: { index: SegmentIndex; d2: number } | null = null;
 
-  if (best > hitR2) return null;
+  for (let i = 0; i < segments.length; i++) {
+    const d2 = minDistToPolyline(p, segments[i]!.points);
+    if (d2 <= hitR2 && (closest === null || d2 < closest.d2)) {
+      closest = { index: i, d2 };
+    }
+  }
 
-  if (best === bestAttack) return "attack";
-  if (best === bestDecay) return "decay";
-  return "release";
+  return closest?.index ?? null;
+}
+
+/**
+ * Convert a phase index + progress to milliseconds from envelope start.
+ */
+export function phaseIndexToMs(
+  phases: EnvelopePhase[],
+  phaseIndex: number,
+  progress: number
+): number {
+  if (phaseIndex < 0 || phases.length === 0) return 0;
+
+  let ms = cumulativeTimeBeforePhase(phases, phaseIndex);
+
+  if (phaseIndex < phases.length) {
+    ms += phases[phaseIndex]!.durationMs * clamp01(progress);
+  }
+
+  return ms;
+}
+
+export type MarkerType = "loopStart" | "hold";
+
+export type MarkerPosition = {
+  type: MarkerType;
+  phaseIndex: number;
+  x: number;
+  y: number;
+};
+
+/**
+ * Get positions of all markers (loopStart and hold indicators).
+ * loopStart markers are at the top; hold markers are at the bottom.
+ */
+export function getMarkerPositions(
+  phases: EnvelopePhase[],
+  coords: CoordinateSystem
+): MarkerPosition[] {
+  const { xOfMs, pad, h } = coords;
+  const markers: MarkerPosition[] = [];
+  const topY = pad;
+  const bottomY = pad + h;
+
+  let cumulativeMs = 0;
+  for (let i = 0; i < phases.length - 1; i++) { // Exclude last phase
+    const phase = phases[i]!;
+    cumulativeMs += Math.max(0, phase.durationMs);
+    const x = xOfMs(cumulativeMs);
+
+    if (phase.loopStart) {
+      markers.push({ type: "loopStart", phaseIndex: i, x, y: topY });
+    }
+    if (phase.hold) {
+      markers.push({ type: "hold", phaseIndex: i, x, y: bottomY });
+    }
+  }
+
+  return markers;
+}
+
+/**
+ * Find which marker (if any) is hit at a point.
+ */
+export function findHitMarker(
+  px: number,
+  py: number,
+  markers: MarkerPosition[],
+  hitRadius: number
+): MarkerPosition | null {
+  const hitR2 = hitRadius ** 2;
+
+  for (const marker of markers) {
+    const d2 = (marker.x - px) ** 2 + (marker.y - py) ** 2;
+    if (d2 <= hitR2) {
+      return marker;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find the closest handle index to an x-coordinate.
+ * Used for snapping markers when dragging.
+ */
+export function findClosestHandleByX(
+  px: number,
+  handles: HandlePosition[],
+  excludeLastPhase: boolean = true
+): HandleIndex | null {
+  if (handles.length === 0) return null;
+
+  const maxIndex = excludeLastPhase ? handles.length - 1 : handles.length;
+  let closest: { index: HandleIndex; dist: number } | null = null;
+
+  for (let i = 0; i < maxIndex; i++) {
+    const dist = Math.abs(handles[i]!.x - px);
+    if (closest === null || dist < closest.dist) {
+      closest = { index: i, dist };
+    }
+  }
+
+  return closest?.index ?? null;
 }

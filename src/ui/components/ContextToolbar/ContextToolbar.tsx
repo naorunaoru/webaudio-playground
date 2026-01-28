@@ -1,11 +1,11 @@
 import { DEFAULT_CONTEXT_VALUES } from "@audio/context";
-import { useGraphDoc } from "@state";
+import { useGraphMeta } from "@state";
 import { Button } from "@ui/components/Button";
 import { NumericInput } from "@ui/components/NumericInput";
 import styles from "./ContextToolbar.module.css";
 
 export function ContextToolbar() {
-  const { uiState, setContextState, audioState, onAudioToggle } = useGraphDoc();
+  const { uiState, setContextState, audioState, onAudioToggle } = useGraphMeta();
 
   // Read values from persisted state, falling back to defaults
   const persisted = uiState.context;

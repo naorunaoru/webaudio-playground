@@ -1,7 +1,7 @@
 /**
  * Envelope AudioWorklet Processor
  *
- * Generates ADSR envelope with custom curve shapes.
+ * Generates multi-phase envelope with custom curve shapes.
  * Outputs N channels (one per voice) of envelope CV.
  *
  * Gate events are sent via MessagePort, envelope is computed sample-by-sample.
@@ -10,32 +10,30 @@
 import { clamp01 } from "@utils/math";
 import { shapedT } from "@utils/envelope";
 
-type EnvelopePhase = "idle" | "attack" | "decay" | "sustain" | "release" | "force-release";
+type EnvelopePhase = {
+  id: string;
+  targetLevel: number;
+  durationMs: number;
+  shape: number;
+  hold: boolean;
+  loopStart?: boolean;
+};
 
 type EnvelopeParams = {
-  attackMs: number;
-  decayMs: number;
-  sustain: number;
-  releaseMs: number;
-  attackShape: number;
-  decayShape: number;
-  releaseShape: number;
+  phases: EnvelopePhase[];
   retrigger: boolean;
 };
 
 type VoiceState = {
-  phase: EnvelopePhase;
-  level: number;
-  // Phase timing
-  phaseStartSample: number;
+  phaseIndex: number;          // Current phase (0 to N-1), or -1 for idle
+  level: number;               // Current output level
+  phaseStartSample: number;    // Sample when current phase started
   phaseDurationSamples: number;
-  // Levels for interpolation
-  startLevel: number;
-  targetLevel: number;
-  // Shape for current phase
+  startLevel: number;          // Level at start of current phase
+  targetLevel: number;         // Level at end of current phase
   shape: number;
-  // For sustain, store the level
-  sustainLevel: number;
+  isHolding: boolean;          // True if waiting for gate-off at a hold phase
+  isForceRelease: boolean;     // True if in force-release fade
 };
 
 type EnvelopeMessage =
@@ -49,29 +47,64 @@ const FORCE_RELEASE_FADE_MS = 5;
 
 function createVoiceState(): VoiceState {
   return {
-    phase: "idle",
+    phaseIndex: -1,
     level: 0,
     phaseStartSample: 0,
     phaseDurationSamples: 0,
     startLevel: 0,
     targetLevel: 0,
     shape: 0,
-    sustainLevel: 0,
+    isHolding: false,
+    isForceRelease: false,
   };
+}
+
+/**
+ * Compute the index of the first "release" phase.
+ * Release starts at the first phase after the last hold phase.
+ * If no phase has hold=true, release starts at the last phase.
+ */
+function computeReleasePhaseIndex(phases: EnvelopePhase[]): number {
+  if (phases.length === 0) return 0;
+
+  // Find the last phase with hold=true (excluding the last phase, since hold is ignored there)
+  let lastHoldIndex = -1;
+  for (let i = 0; i < phases.length - 1; i++) {
+    if (phases[i]!.hold) {
+      lastHoldIndex = i;
+    }
+  }
+
+  // Release starts at the phase after the last hold
+  if (lastHoldIndex >= 0) {
+    return lastHoldIndex + 1;
+  }
+
+  // No hold phases: release starts at the last phase
+  return phases.length - 1;
+}
+
+/**
+ * Find the loop start index for a given hold phase.
+ * Searches backwards from holdIndex to find the nearest phase with loopStart=true.
+ * Returns -1 if no loop start is found.
+ */
+function findLoopStartIndex(phases: EnvelopePhase[], holdIndex: number): number {
+  for (let i = holdIndex; i >= 0; i--) {
+    if (phases[i]?.loopStart) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 class EnvelopeProcessor extends AudioWorkletProcessor {
   private params: EnvelopeParams = {
-    attackMs: 10,
-    decayMs: 100,
-    sustain: 0.7,
-    releaseMs: 200,
-    attackShape: 0,
-    decayShape: 0,
-    releaseShape: 0,
+    phases: [],
     retrigger: false,
   };
 
+  private releasePhaseIndex = 0;
   private voiceCount = 32;
   private voices: VoiceState[];
   private currentSample = 0;
@@ -87,6 +120,7 @@ class EnvelopeProcessor extends AudioWorkletProcessor {
       const data = event.data;
       if (data.type === "params") {
         this.params = data.params;
+        this.releasePhaseIndex = computeReleasePhaseIndex(this.params.phases);
       } else if (data.type === "gate") {
         this.handleGate(data.voice, data.state);
       } else if (data.type === "forceRelease") {
@@ -97,79 +131,107 @@ class EnvelopeProcessor extends AudioWorkletProcessor {
     };
   }
 
+  private startPhase(voice: VoiceState, phaseIndex: number, startLevel: number) {
+    const phases = this.params.phases;
+
+    if (phaseIndex < 0 || phaseIndex >= phases.length) {
+      // Go idle
+      voice.phaseIndex = -1;
+      voice.level = 0;
+      voice.isHolding = false;
+      voice.isForceRelease = false;
+      return;
+    }
+
+    const phase = phases[phaseIndex]!;
+    const durationSamples = Math.max(1, (phase.durationMs / 1000) * sampleRate);
+
+    voice.phaseIndex = phaseIndex;
+    voice.phaseStartSample = this.currentSample;
+    voice.phaseDurationSamples = durationSamples;
+    voice.startLevel = startLevel;
+    voice.targetLevel = clamp01(phase.targetLevel);
+    voice.shape = phase.shape;
+    voice.isHolding = false;
+    voice.isForceRelease = false;
+  }
+
   private handleGate(voiceIdx: number, state: "on" | "off") {
     if (voiceIdx < 0 || voiceIdx >= this.voices.length) return;
 
-    const voice = this.voices[voiceIdx];
-    const p = this.params;
+    const voice = this.voices[voiceIdx]!;
+    const phases = this.params.phases;
 
     if (state === "on") {
-      // Gate on - start attack phase
-      // If in force-release, respect retrigger setting
-      const startLevel = p.retrigger ? 0 : voice.level;
-      const attackSamples = Math.max(1, (p.attackMs / 1000) * sampleRate);
-      const sustainLevel = clamp01(p.sustain);
+      // Gate on - start from phase 0
+      if (phases.length === 0) {
+        // No phases: go idle
+        voice.phaseIndex = -1;
+        voice.level = 0;
+        return;
+      }
 
-      voice.phase = "attack";
-      voice.phaseStartSample = this.currentSample;
-      voice.phaseDurationSamples = attackSamples;
-      voice.startLevel = startLevel;
-      voice.targetLevel = 1; // Peak
-      voice.shape = p.attackShape;
-      voice.sustainLevel = sustainLevel;
+      const startLevel = this.params.retrigger ? 0 : voice.level;
+      this.startPhase(voice, 0, startLevel);
     } else {
-      // Gate off - start release phase
-      if (voice.phase === "idle") return;
+      // Gate off - jump to release phase
+      if (voice.phaseIndex < 0) return; // Already idle
 
-      const releaseSamples = Math.max(1, (p.releaseMs / 1000) * sampleRate);
-
-      voice.phase = "release";
-      voice.phaseStartSample = this.currentSample;
-      voice.phaseDurationSamples = releaseSamples;
-      voice.startLevel = voice.level;
-      voice.targetLevel = 0;
-      voice.shape = p.releaseShape;
+      // If we're holding, or before the release portion, jump to release
+      if (voice.phaseIndex < this.releasePhaseIndex || voice.isHolding) {
+        this.startPhase(voice, this.releasePhaseIndex, voice.level);
+      }
+      // If already in release portion, let it continue
     }
   }
 
   private handleForceRelease(voiceIdx: number) {
     if (voiceIdx < 0 || voiceIdx >= this.voices.length) return;
 
-    const voice = this.voices[voiceIdx];
+    const voice = this.voices[voiceIdx]!;
 
     // If already idle, nothing to do
-    if (voice.phase === "idle") return;
+    if (voice.phaseIndex < 0 && !voice.isForceRelease) return;
 
     // Start fast fade
     const fadeSamples = Math.max(1, (FORCE_RELEASE_FADE_MS / 1000) * sampleRate);
 
-    voice.phase = "force-release";
+    voice.phaseIndex = -1; // Mark as special force-release state
+    voice.isForceRelease = true;
     voice.phaseStartSample = this.currentSample;
     voice.phaseDurationSamples = fadeSamples;
     voice.startLevel = voice.level;
     voice.targetLevel = 0;
-    voice.shape = 0; // Linear fade for force release
+    voice.shape = 0; // Linear fade
+    voice.isHolding = false;
   }
 
   private handleReleaseAll() {
-    // Fast-fade all active voices
     const fadeSamples = Math.max(1, (FORCE_RELEASE_FADE_MS / 1000) * sampleRate);
 
     for (let i = 0; i < this.voices.length; i++) {
-      const voice = this.voices[i];
-      if (voice.phase !== "idle") {
-        voice.phase = "force-release";
+      const voice = this.voices[i]!;
+      if (voice.phaseIndex >= 0 || voice.isForceRelease) {
+        voice.phaseIndex = -1;
+        voice.isForceRelease = true;
         voice.phaseStartSample = this.currentSample;
         voice.phaseDurationSamples = fadeSamples;
         voice.startLevel = voice.level;
         voice.targetLevel = 0;
         voice.shape = 0;
+        voice.isHolding = false;
       }
     }
   }
 
   private advanceVoice(voice: VoiceState, voiceIdx: number): void {
-    if (voice.phase === "idle" || voice.phase === "sustain") {
+    // Idle voice
+    if (voice.phaseIndex < 0 && !voice.isForceRelease) {
+      return;
+    }
+
+    // Holding at a hold phase
+    if (voice.isHolding) {
       return;
     }
 
@@ -177,32 +239,46 @@ class EnvelopeProcessor extends AudioWorkletProcessor {
     const duration = voice.phaseDurationSamples;
 
     if (elapsed >= duration) {
-      // Phase complete, transition to next
-      if (voice.phase === "attack") {
-        // Attack complete -> decay
-        const decaySamples = Math.max(1, (this.params.decayMs / 1000) * sampleRate);
-        voice.phase = "decay";
-        voice.phaseStartSample = this.currentSample;
-        voice.phaseDurationSamples = decaySamples;
-        voice.startLevel = voice.targetLevel; // Peak (1.0)
-        voice.targetLevel = voice.sustainLevel;
-        voice.shape = this.params.decayShape;
-        voice.level = voice.startLevel;
-      } else if (voice.phase === "decay") {
-        // Decay complete -> sustain
-        voice.phase = "sustain";
-        voice.level = voice.sustainLevel;
-      } else if (voice.phase === "release") {
-        // Release complete -> idle
-        voice.phase = "idle";
-        voice.level = 0;
-        // Notify main thread that release is complete
-        this.port.postMessage({ type: "releaseComplete", voice: voiceIdx });
-      } else if (voice.phase === "force-release") {
+      // Phase complete
+      if (voice.isForceRelease) {
         // Force release complete -> idle
-        // Don't send releaseComplete - allocator already cleared holds
-        voice.phase = "idle";
+        voice.isForceRelease = false;
+        voice.phaseIndex = -1;
         voice.level = 0;
+        return;
+      }
+
+      const phases = this.params.phases;
+      const currentPhase = phases[voice.phaseIndex];
+      const isLastPhase = voice.phaseIndex >= phases.length - 1;
+
+      // Check if we should hold (but not on the last phase)
+      if (currentPhase?.hold && !isLastPhase) {
+        // Check if there's a loop start to jump back to
+        const loopStartIdx = findLoopStartIndex(phases, voice.phaseIndex);
+        if (loopStartIdx >= 0) {
+          // Loop to the phase AFTER the loopStart marker
+          // (loopStart marks the endpoint, so we start from the next phase)
+          const loopTargetIdx = loopStartIdx + 1;
+          const startLevel = phases[loopStartIdx]!.targetLevel;
+          this.startPhase(voice, loopTargetIdx, startLevel);
+          return;
+        }
+        // No loop start found - original hold behavior
+        voice.level = voice.targetLevel;
+        voice.isHolding = true;
+        return;
+      }
+
+      // Move to next phase or go idle
+      if (isLastPhase) {
+        // Envelope complete -> idle
+        voice.phaseIndex = -1;
+        voice.level = 0;
+        this.port.postMessage({ type: "releaseComplete", voice: voiceIdx });
+      } else {
+        // Advance to next phase
+        this.startPhase(voice, voice.phaseIndex + 1, voice.targetLevel);
       }
     } else {
       // Interpolate within phase
@@ -228,7 +304,7 @@ class EnvelopeProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < frames; i++) {
       // Process each voice
       for (let ch = 0; ch < outputChannels && ch < this.voices.length; ch++) {
-        const voice = this.voices[ch];
+        const voice = this.voices[ch]!;
         this.advanceVoice(voice, ch);
         const out = output[ch];
         if (out) {

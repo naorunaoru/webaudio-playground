@@ -34,7 +34,6 @@ type LoadMidiMessage = {
 
 type PlayMessage = {
   type: "play";
-  startSample: number; // currentFrame when play was requested
 };
 
 type StopMessage = {
@@ -91,7 +90,11 @@ class MidiPlayerProcessor extends AudioWorkletProcessor {
 
         case "play":
           this.playing = true;
-          this.playStartSample = msg.startSample;
+          // Use the worklet's own currentFrame so playback position is
+          // perfectly aligned — a startSample sent from the main thread
+          // can be stale by the time this message arrives, causing early
+          // events (like program changes at tick 0) to be skipped.
+          this.playStartSample = currentFrame;
           this.eventIndex = 0;
           break;
 

@@ -9,7 +9,7 @@ import {
   importProject,
   pickFile,
 } from "./project";
-import { GraphDocProvider, useGraphDoc } from "./state";
+import { GraphDocProvider, useGraphStore, useGraphMeta } from "./state";
 import { SelectionProvider, MidiProvider } from "./contexts";
 import { createNode } from "./graph/graphUtils";
 import { MenuBar, MenuBarItem } from "./ui/components/MenuBar";
@@ -72,23 +72,26 @@ function DspLoadDisplay({
 
 function AppContent() {
   const {
-    graphState,
-    isLoading,
+    store,
     addNode,
-    newDocument,
-    importDocument,
     patchMultipleNodesEphemeral,
+  } = useGraphStore();
+
+  const {
+    isLoading,
     undo,
     redo,
     canUndo,
     canRedo,
     undoDescription,
     redoDescription,
+    newDocument,
+    importDocument,
     uiState,
     setKeyboardState,
     audioState,
     ensureAudioRunning,
-  } = useGraphDoc();
+  } = useGraphMeta();
 
   const graphEditorRef = useRef<GraphEditorHandle | null>(null);
   const didAutoStartRef = useRef(false);
@@ -159,19 +162,20 @@ function AppContent() {
       );
       window.removeEventListener("keydown", onFirstInteraction, keyOptions);
     };
-  }, [ensureAudioRunning, graphState]);
+  }, [ensureAudioRunning]);
 
   const handleExport = useCallback(async () => {
-    if (!graphState) return;
+    const graph = store.getFullGraphSnapshot();
+    if (!graph) return;
 
     try {
-      const blob = await exportProject(graphState);
+      const blob = await exportProject(graph);
       const timestamp = new Date().toISOString().slice(0, 10);
       downloadBlob(blob, `webaudio-project-${timestamp}.zip`);
     } catch (err) {
       console.error("Export failed:", err);
     }
-  }, [graphState]);
+  }, [store]);
 
   const handleImport = useCallback(async () => {
     const file = await pickFile(".zip");
@@ -215,7 +219,7 @@ function AppContent() {
     );
   }
 
-  if (!graphState) {
+  if (!store.isInitialized()) {
     return (
       <div className={styles.shell}>
         <div className={styles.loading}>No document</div>
@@ -226,7 +230,7 @@ function AppContent() {
   return (
     <SelectionProvider>
       <MidiProvider
-        graph={graphState}
+        store={store}
         onEnsureAudioRunning={ensureAudioRunning}
         onPatchNodesEphemeral={patchMultipleNodesEphemeral}
       >

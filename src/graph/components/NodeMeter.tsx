@@ -20,11 +20,25 @@ export function NodeMeter({
 }: NodeMeterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
+  const stampRef = useRef<OffscreenCanvas | null>(null);
 
+  // Pre-render the circle to an offscreen canvas whenever color changes
+  useEffect(() => {
+    const stamp = new OffscreenCanvas(METER_SIZE, METER_SIZE);
+    const ctx = stamp.getContext("2d");
+    if (!ctx) return;
+
+    ctx.beginPath();
+    ctx.arc(METER_SIZE / 2, METER_SIZE / 2, METER_SIZE / 2, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+    stampRef.current = stamp;
+  }, [color]);
+
+  // Animate by stamping the pre-rendered circle with globalAlpha
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || audioState !== "running") {
-      // Clear canvas when not running
       if (canvas) {
         const ctx = canvas.getContext("2d");
         if (ctx) ctx.clearRect(0, 0, METER_SIZE, METER_SIZE);
@@ -39,28 +53,21 @@ export function NodeMeter({
 
     const draw = () => {
       const engine = getAudioEngine();
-      const levels = engine.getLevels();
-      const level = levels[nodeId] ?? 0;
+      const level = engine.getLevel(nodeId);
 
-      // Normalize: 0.12 is roughly "loud"
       const normalized = Math.max(0, Math.min(1, level / 0.12));
 
-      // Calculate opacity
       const opacity = isOutputNode
         ? 0.15 + normalized * 0.8
         : normalized * 0.95;
 
-      // Only draw if there's something to show
       const visible = isOutputNode || level > 0;
 
       ctx.clearRect(0, 0, METER_SIZE, METER_SIZE);
 
-      if (visible && opacity > 0.01) {
-        ctx.beginPath();
-        ctx.arc(METER_SIZE / 2, METER_SIZE / 2, METER_SIZE / 2, 0, Math.PI * 2);
+      if (visible && opacity > 0.01 && stampRef.current) {
         ctx.globalAlpha = opacity;
-        ctx.fillStyle = color;
-        ctx.fill();
+        ctx.drawImage(stampRef.current, 0, 0);
         ctx.globalAlpha = 1;
       }
 

@@ -37,6 +37,7 @@ export const vcoGraph: NodeDefinition<VcoNode> = {
   defaultState,
   ports: () => [
     { id: "pitch_in", name: "V/oct", kind: "pitch", direction: "in" },
+    { id: "phase_mod_in", name: "Phase", kind: "cv", direction: "in" },
     { id: "audio_out", name: "Audio", kind: "audio", direction: "out" },
   ],
   ui: VcoUi,

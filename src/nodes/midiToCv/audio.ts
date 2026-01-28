@@ -45,7 +45,7 @@ function pressureToCv(value: number): number {
 function createMidiToCvRuntime(
   ctx: AudioContext,
   nodeId: NodeId,
-  dispatchEvent: DispatchEventFn
+  dispatchEvent: DispatchEventFn,
 ): AudioNodeInstance<MidiToCvGraphNode> {
   let graphRef: GraphState | null = null;
   let currentState: MidiToCvGraphNode["state"] | null = null;
@@ -66,7 +66,10 @@ function createMidiToCvRuntime(
   // Sustain pedal state per channel (CC 64)
   const sustainActive = new Map<number, boolean>();
   // Notes held by sustain pedal: Map<note, { voiceIdx, channel }>
-  const sustainedNotes = new Map<number, { voiceIdx: number; channel: number }>();
+  const sustainedNotes = new Map<
+    number,
+    { voiceIdx: number; channel: number }
+  >();
 
   // Create ConstantSourceNodes for all voices
   const pitchSources: ConstantSourceNode[] = [];
@@ -151,7 +154,11 @@ function createMidiToCvRuntime(
     }
   }
 
-  function handleNoteOff(note: number, channel: number, releaseVelocity?: number) {
+  function handleNoteOff(
+    note: number,
+    channel: number,
+    releaseVelocity?: number,
+  ) {
     const voiceIdx = noteToVoice.get(note);
     if (voiceIdx === undefined) return;
 
@@ -169,7 +176,7 @@ function createMidiToCvRuntime(
     note: number,
     voiceIdx: number,
     channel: number,
-    releaseVelocity?: number
+    releaseVelocity?: number,
   ) {
     // Keep pitch CV at current value - envelope release needs it!
 
@@ -232,13 +239,34 @@ function createMidiToCvRuntime(
     sustainActive.delete(channel);
   }
 
+  function handleSystemReset() {
+    // Release all active notes across all channels
+    for (const [note, voiceIdx] of noteToVoice) {
+      const channel =
+        [...channelToVoice.entries()].find(([, v]) => v === voiceIdx)?.[0] ?? 0;
+      releaseVoice(note, voiceIdx, channel);
+    }
+    // Clear all sustained notes
+    for (const [note, held] of sustainedNotes) {
+      releaseVoice(note, held.voiceIdx, held.channel);
+    }
+    // Clear all state maps
+    noteToVoice.clear();
+    channelToVoice.clear();
+    sustainActive.clear();
+    sustainedNotes.clear();
+  }
+
   function handlePitchBend(value: number, channel: number) {
     const voiceIdx = channelToVoice.get(channel);
     if (voiceIdx === undefined) return;
 
     // Convert pitch bend to semitones (MPE uses ±48 range typically)
     const semitones = pitchBendToSemitones(value, 48);
-    slideSources[voiceIdx].offset.setValueAtTime(semitones / 12, ctx.currentTime);
+    slideSources[voiceIdx].offset.setValueAtTime(
+      semitones / 12,
+      ctx.currentTime,
+    );
   }
 
   function handleAftertouch(value: number, channel: number) {
@@ -300,6 +328,12 @@ function createMidiToCvRuntime(
 
       // Channel filtering: 0 = all channels, 1-16 = specific channel
       const targetChannel = currentState?.channel ?? 0;
+
+      if (event.type === "systemReset") {
+        handleSystemReset();
+        return;
+      }
+
       if (targetChannel !== 0 && event.channel !== targetChannel) {
         return; // Ignore events on non-matching channels
       }
@@ -355,10 +389,11 @@ function createMidiToCvRuntime(
 }
 
 export function midiToCvAudioFactory(
-  services: AudioNodeServices
+  services: AudioNodeServices,
 ): AudioNodeFactory<MidiToCvGraphNode> {
   return {
     type: "midiToCv",
-    create: (ctx, nodeId) => createMidiToCvRuntime(ctx, nodeId, services.dispatchEvent),
+    create: (ctx, nodeId) =>
+      createMidiToCvRuntime(ctx, nodeId, services.dispatchEvent),
   };
 }

@@ -18,6 +18,7 @@ import { pitchTransposeNode } from "./pitchTranspose";
 import { pitchRatioNode } from "./pitchRatio";
 import { attenuatorNode } from "./attenuator";
 import { delayNode } from "./delay";
+import { microDelayNode } from "./microDelay";
 import { reverbNode } from "./reverb";
 import { limiterNode } from "./limiter";
 import { samplePlayerNode } from "./samplePlayer";
@@ -43,6 +44,7 @@ export const NODE_MODULES = {
   pitchRatio: pitchRatioNode,
   attenuator: attenuatorNode,
   delay: delayNode,
+  microDelay: microDelayNode,
   reverb: reverbNode,
   limiter: limiterNode,
   samplePlayer: samplePlayerNode,

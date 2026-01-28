@@ -7,11 +7,14 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { type DocHandle } from "@automerge/automerge-repo";
+import {
+  type DocHandle,
+  type DocHandleChangePayload,
+} from "@automerge/automerge-repo";
 import * as Automerge from "@automerge/automerge";
 import type { GraphDoc, DocConnection, DocUiState } from "./types";
 import type { GraphState, NodeId, ConnectionId, GraphNode } from "@graph/types";
-import { docToGraphState, graphStateToDoc } from "./converters";
+import { graphStateToDoc } from "./converters";
 import {
   getRepo,
   getOrCreateMainDocument,
@@ -20,6 +23,13 @@ import {
   waitForStorageReady,
 } from "./repo";
 import { getAudioEngine } from "@audio/engine";
+import { GraphStore } from "./GraphStore";
+import type { StructuralState } from "./GraphStore";
+import {
+  useNodeState as useNodeStatePrimitive,
+  useStructuralState as useStructuralStatePrimitive,
+  useFullGraphState as useFullGraphStatePrimitive,
+} from "./hooks";
 
 type HistoryEntry = {
   binary: Uint8Array;
@@ -36,7 +46,6 @@ function formatPatchDescription(
   const keys = Object.keys(patch);
   if (keys.length === 0) return `Update ${nodeType}`;
 
-  // Format individual values
   const parts = keys.map((key) => {
     const value = patch[key];
     if (typeof value === "number") {
@@ -49,7 +58,6 @@ function formatPatchDescription(
       return `${key} = ${value}`;
     }
     if (typeof value === "object" && value !== null) {
-      // For nested objects like env, just mention the key
       return key;
     }
     return key;
@@ -58,19 +66,10 @@ function formatPatchDescription(
   return `${nodeType}: ${parts.join(", ")}`;
 }
 
-type GraphDocContextValue = {
-  /** Current graph state (array-based, for UI/audio) */
-  graphState: GraphState | null;
+// ==================== Context Types ====================
 
-  /** Loading state */
-  isLoading: boolean;
-
-  /** Audio state */
-  audioState: AudioContextState | "off";
-  onAudioToggle: () => void;
-  ensureAudioRunning: () => Promise<void>;
-
-  /** Mutation functions */
+type GraphStoreContextValue = {
+  store: GraphStore;
   moveNode: (nodeId: NodeId, x: number, y: number) => void;
   addNode: (node: GraphNode) => void;
   deleteNode: (nodeId: NodeId) => void;
@@ -79,32 +78,33 @@ type GraphDocContextValue = {
   addConnection: (connection: DocConnection) => void;
   deleteConnection: (connectionId: ConnectionId) => void;
   setZOrder: (nodeId: NodeId, zIndex: number) => void;
-
-  /** Ephemeral mutations (no history) - for transient state like MIDI triggers, playhead */
   patchNodeEphemeral: (nodeId: NodeId, patch: Record<string, unknown>) => void;
   patchMultipleNodesEphemeral: (
     patches: Map<NodeId, Record<string, unknown>>
   ) => void;
-
-  /** Batch operations for continuous changes (sliders, drags) */
   startBatch: () => void;
   endBatch: () => void;
+};
 
-  /** Undo/Redo */
+type GraphMetaContextValue = {
+  isLoading: boolean;
+  audioState: AudioContextState | "off";
+  onAudioToggle: () => void;
+  ensureAudioRunning: () => Promise<void>;
   undo: () => void;
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
   undoDescription: string | null;
   redoDescription: string | null;
-
-  /** Document operations */
   newDocument: () => void;
   importDocument: (graph: GraphState) => void;
-
-  /** UI state (persisted but no undo) */
   uiState: DocUiState;
-  setKeyboardState: (state: { visible: boolean; x: number; y: number }) => void;
+  setKeyboardState: (state: {
+    visible: boolean;
+    x: number;
+    y: number;
+  }) => void;
   setContextState: (state: {
     tempo?: number;
     a4Hz?: number;
@@ -113,19 +113,33 @@ type GraphDocContextValue = {
   setViewportState: (state: { centerX: number; centerY: number }) => void;
 };
 
-const GraphDocContext = createContext<GraphDocContextValue | null>(null);
+// Legacy combined type for useGraphDoc() compatibility
+type GraphDocContextValue = GraphStoreContextValue &
+  GraphMetaContextValue & {
+    graphState: GraphState | null;
+  };
+
+// ==================== Contexts ====================
+
+const GraphStoreCtx = createContext<GraphStoreContextValue | null>(null);
+const GraphMetaCtx = createContext<GraphMetaContextValue | null>(null);
+
+// ==================== Provider ====================
 
 export function GraphDocProvider({ children }: { children: ReactNode }) {
   const [handle, setHandle] = useState<DocHandle<GraphDoc> | null>(null);
-  const [graphState, setGraphState] = useState<GraphState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [audioState, setAudioState] = useState<AudioContextState | "off">(
     "off"
   );
+  const [uiState, setUiState] = useState<DocUiState>({});
 
-  // Refs for audio toggle callback (avoid stale closure)
-  const graphStateRef = useRef<GraphState | null>(null);
-  graphStateRef.current = graphState;
+  // The graph store replaces useState<GraphState>
+  const storeRef = useRef(new GraphStore());
+  const store = storeRef.current;
+
+  // Flag for undo/redo/import — tells the change handler to do a full replace
+  const isReplacingRef = useRef(false);
 
   // Undo/redo stacks
   const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
@@ -134,6 +148,7 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
   // Batching state
   const isBatchingRef = useRef(false);
   const batchSnapshotRef = useRef<Uint8Array | null>(null);
+  const batchDescriptionRef = useRef<string | null>(null);
 
   // Initialize repo and load document
   useEffect(() => {
@@ -151,7 +166,8 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       // Initial state
       const doc = docHandle.doc();
       if (doc) {
-        setGraphState(docToGraphState(doc));
+        store.replaceAll(doc);
+        setUiState(doc.meta?.ui ?? {});
       }
 
       setIsLoading(false);
@@ -162,16 +178,26 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [store]);
 
-  // Subscribe to handle changes - runs whenever handle changes (including after import/new)
+  // Subscribe to handle changes — patch-aware
   useEffect(() => {
     if (!handle) return;
 
-    const onChange = () => {
-      const doc = handle.doc();
-      if (doc) {
-        setGraphState(docToGraphState(doc));
+    const onChange = (payload: DocHandleChangePayload<GraphDoc>) => {
+      if (isReplacingRef.current) {
+        isReplacingRef.current = false;
+        store.replaceAll(payload.doc);
+        setUiState(payload.doc.meta?.ui ?? {});
+        return;
+      }
+
+      store.applyPatches(payload.patches, payload.doc);
+
+      // Update uiState only when meta patches are present
+      const hasMetaPatch = payload.patches.some((p) => p.path[0] === "meta");
+      if (hasMetaPatch) {
+        setUiState(payload.doc.meta?.ui ?? {});
       }
     };
 
@@ -180,7 +206,7 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     return () => {
       handle.off("change", onChange);
     };
-  }, [handle]);
+  }, [handle, store]);
 
   // Helper to push to undo stack
   const pushUndo = useCallback((binary: Uint8Array, description: string) => {
@@ -192,18 +218,14 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
       }
       return next;
     });
-    setRedoStack([]); // Clear redo on new change
+    setRedoStack([]);
   }, []);
-
-  // Pending description for batch operations
-  const batchDescriptionRef = useRef<string | null>(null);
 
   // Helper to save current state before mutation
   const saveBeforeMutation = useCallback(
     (description: string) => {
       if (!handle) return;
 
-      // If batching, store description for later but don't save yet
       if (isBatchingRef.current) {
         batchDescriptionRef.current = description;
         return;
@@ -218,7 +240,6 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     [handle, pushUndo]
   );
 
-  // Helper to get node type for descriptions
   const getNodeType = useCallback(
     (nodeId: NodeId): string => {
       const doc = handle?.doc();
@@ -227,7 +248,8 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     [handle]
   );
 
-  // Mutation functions
+  // ==================== Mutation functions ====================
+
   const moveNode = useCallback(
     (nodeId: NodeId, x: number, y: number) => {
       if (!handle) return;
@@ -275,7 +297,6 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
         delete doc.nodes[nodeId];
         delete doc.nodeZOrder[nodeId];
 
-        // Remove connections referencing this node
         for (const connId of Object.keys(doc.connections)) {
           const conn = doc.connections[connId];
           if (conn.from.nodeId === nodeId || conn.to.nodeId === nodeId) {
@@ -331,7 +352,6 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     [handle, saveBeforeMutation, getNodeType]
   );
 
-  // Ephemeral mutations - no history recording
   const patchNodeEphemeral = useCallback(
     (nodeId: NodeId, patch: Record<string, unknown>) => {
       if (!handle) return;
@@ -388,7 +408,6 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     [handle, saveBeforeMutation]
   );
 
-  // Z-order is ephemeral - persists but doesn't create undo history
   const setZOrder = useCallback(
     (nodeId: NodeId, zIndex: number) => {
       if (!handle) return;
@@ -403,7 +422,8 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     [handle]
   );
 
-  // Batch operations
+  // ==================== Batch operations ====================
+
   const startBatch = useCallback(() => {
     if (!handle || isBatchingRef.current) return;
 
@@ -419,11 +439,9 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
 
     const doc = handle.doc();
     if (doc) {
-      // Only push to undo if something actually changed during the batch
       const currentBinary = Automerge.save(doc);
       const snapshotBinary = batchSnapshotRef.current;
 
-      // Compare binaries - if they're different, something changed
       if (
         currentBinary.length !== snapshotBinary.length ||
         !currentBinary.every((byte, i) => byte === snapshotBinary[i])
@@ -438,18 +456,17 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     batchDescriptionRef.current = null;
   }, [handle, pushUndo]);
 
-  // Undo/Redo
+  // ==================== Undo/Redo ====================
+
   const undo = useCallback(() => {
     if (!handle || undoStack.length === 0) return;
 
     const doc = handle.doc();
     if (!doc) return;
 
-    // Pop from undo stack
     const entry = undoStack[undoStack.length - 1];
     setUndoStack((prev) => prev.slice(0, -1));
 
-    // Save current state to redo stack (with the description of what we're undoing)
     const currentBinary = Automerge.save(doc);
     console.log(`[History] Undo: ${entry.description}`);
     setRedoStack((prev) => [
@@ -463,9 +480,8 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
 
     const restoredDoc = Automerge.load<GraphDoc>(entry.binary);
 
-    // Merge the restored doc into current handle
+    isReplacingRef.current = true;
     handle.change((doc) => {
-      // Clear and replace all data
       for (const key of Object.keys(doc.nodes)) {
         delete doc.nodes[key];
       }
@@ -476,7 +492,6 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
         delete doc.nodeZOrder[key];
       }
 
-      // Copy from restored
       for (const [id, node] of Object.entries(restoredDoc.nodes)) {
         doc.nodes[id] = { ...node };
       }
@@ -496,11 +511,9 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     const doc = handle.doc();
     if (!doc) return;
 
-    // Pop from redo stack
     const entry = redoStack[redoStack.length - 1];
     setRedoStack((prev) => prev.slice(0, -1));
 
-    // Save current state to undo stack (with the description of what we're redoing)
     const currentBinary = Automerge.save(doc);
     console.log(`[History] Redo: ${entry.description}`);
     setUndoStack((prev) => [
@@ -514,8 +527,8 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
 
     const restoredDoc = Automerge.load<GraphDoc>(entry.binary);
 
+    isReplacingRef.current = true;
     handle.change((doc) => {
-      // Clear and replace all data
       for (const key of Object.keys(doc.nodes)) {
         delete doc.nodes[key];
       }
@@ -526,7 +539,6 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
         delete doc.nodeZOrder[key];
       }
 
-      // Copy from restored
       for (const [id, node] of Object.entries(restoredDoc.nodes)) {
         doc.nodes[id] = { ...node };
       }
@@ -540,12 +552,12 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     });
   }, [handle, redoStack]);
 
-  // Document operations
+  // ==================== Document operations ====================
+
   const newDocument = useCallback(() => {
     const repo = getRepo();
     const newHandle = createNewDocument(repo);
 
-    // Clear history
     setUndoStack([]);
     setRedoStack([]);
 
@@ -553,24 +565,34 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
 
     const doc = newHandle.doc();
     if (doc) {
-      setGraphState(docToGraphState(doc));
+      store.replaceAll(doc);
+      setUiState(doc.meta?.ui ?? {});
     }
-  }, []);
+  }, [store]);
 
-  const importDocument = useCallback((graph: GraphState) => {
-    const repo = getRepo();
-    const graphDoc = graphStateToDoc(graph);
-    const newHandle = createDocumentFromImport(repo, graphDoc);
+  const importDocument = useCallback(
+    (graph: GraphState) => {
+      const repo = getRepo();
+      const graphDoc = graphStateToDoc(graph);
+      const newHandle = createDocumentFromImport(repo, graphDoc);
 
-    // Clear history
-    setUndoStack([]);
-    setRedoStack([]);
+      setUndoStack([]);
+      setRedoStack([]);
 
-    setHandle(newHandle);
-    setGraphState(graph);
-  }, []);
+      setHandle(newHandle);
 
-  // UI state (persisted but no undo history)
+      // Initialize store from the new handle's doc
+      const doc = newHandle.doc();
+      if (doc) {
+        store.replaceAll(doc);
+        setUiState(doc.meta?.ui ?? {});
+      }
+    },
+    [store]
+  );
+
+  // ==================== UI state ====================
+
   const setKeyboardState = useCallback(
     (state: { visible: boolean; x: number; y: number }) => {
       if (!handle) return;
@@ -620,39 +642,45 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     [handle]
   );
 
-  const uiState: DocUiState = handle?.doc()?.meta.ui ?? {};
+  // ==================== Audio ====================
 
-  // Audio toggle handler
   const onAudioToggle = useCallback(async () => {
     const engine = getAudioEngine();
     const next = await engine.toggleRunning();
-    if (next === "running" && graphStateRef.current) {
-      engine.syncGraph(graphStateRef.current);
+    if (next === "running") {
+      const graph = store.getFullGraphSnapshot();
+      if (graph) engine.syncGraph(graph);
     }
     setAudioState(next);
-  }, []);
+  }, [store]);
 
-  // Ensure audio is running (for auto-start on interaction/MIDI)
   const ensureAudioRunning = useCallback(async () => {
     const engine = getAudioEngine();
     await engine.ensureRunning();
-    if (graphStateRef.current) {
-      engine.syncGraph(graphStateRef.current);
-    }
+    const graph = store.getFullGraphSnapshot();
+    if (graph) engine.syncGraph(graph);
     setAudioState(engine.getStatus()?.state ?? "off");
-  }, []);
+  }, [store]);
 
-  // Initialize audio state on mount
   useEffect(() => {
     setAudioState(getAudioEngine().getStatus()?.state ?? "off");
   }, []);
 
-  const value: GraphDocContextValue = {
-    graphState,
-    isLoading,
-    audioState,
-    onAudioToggle,
-    ensureAudioRunning,
+  // Sync graph to audio engine via store subscription (no React rerender)
+  const audioStateRef = useRef(audioState);
+  audioStateRef.current = audioState;
+  useEffect(() => {
+    return store.subscribeFullGraph(() => {
+      if (audioStateRef.current === "off") return;
+      const graph = store.getFullGraphSnapshot();
+      if (graph) getAudioEngine().syncGraph(graph);
+    });
+  }, [store]);
+
+  // ==================== Context values ====================
+
+  const storeValue: GraphStoreContextValue = {
+    store,
     moveNode,
     addNode,
     deleteNode,
@@ -665,14 +693,25 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
     patchMultipleNodesEphemeral,
     startBatch,
     endBatch,
+  };
+
+  const metaValue: GraphMetaContextValue = {
+    isLoading,
+    audioState,
+    onAudioToggle,
+    ensureAudioRunning,
     undo,
     redo,
     canUndo: undoStack.length > 0,
     canRedo: redoStack.length > 0,
     undoDescription:
-      undoStack.length > 0 ? undoStack[undoStack.length - 1].description : null,
+      undoStack.length > 0
+        ? undoStack[undoStack.length - 1].description
+        : null,
     redoDescription:
-      redoStack.length > 0 ? redoStack[redoStack.length - 1].description : null,
+      redoStack.length > 0
+        ? redoStack[redoStack.length - 1].description
+        : null,
     newDocument,
     importDocument,
     uiState,
@@ -682,16 +721,60 @@ export function GraphDocProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <GraphDocContext.Provider value={value}>
-      {children}
-    </GraphDocContext.Provider>
+    <GraphStoreCtx.Provider value={storeValue}>
+      <GraphMetaCtx.Provider value={metaValue}>{children}</GraphMetaCtx.Provider>
+    </GraphStoreCtx.Provider>
   );
 }
 
-export function useGraphDoc(): GraphDocContextValue {
-  const ctx = useContext(GraphDocContext);
+// ==================== Hooks ====================
+
+export function useGraphStore(): GraphStoreContextValue {
+  const ctx = useContext(GraphStoreCtx);
   if (!ctx) {
-    throw new Error("useGraphDoc must be used within GraphDocProvider");
+    throw new Error("useGraphStore must be used within GraphDocProvider");
   }
   return ctx;
+}
+
+export function useGraphMeta(): GraphMetaContextValue {
+  const ctx = useContext(GraphMetaCtx);
+  if (!ctx) {
+    throw new Error("useGraphMeta must be used within GraphDocProvider");
+  }
+  return ctx;
+}
+
+/** Per-node subscription — only rerenders when this node changes. */
+export function useNodeState(nodeId: NodeId) {
+  const { store } = useGraphStore();
+  return useNodeStatePrimitive(store, nodeId);
+}
+
+/** Structural state — rerenders on node add/remove, connections, positions, z-order. */
+export function useStructuralState(): StructuralState {
+  const { store } = useGraphStore();
+  return useStructuralStatePrimitive(store);
+}
+
+/** Full graph — rerenders on any graph change. For audio engine, export, MIDI. */
+export function useFullGraphState(): GraphState | null {
+  const { store } = useGraphStore();
+  return useFullGraphStatePrimitive(store);
+}
+
+/**
+ * Legacy compatibility hook — returns the combined context value.
+ * Prefer useGraphStore(), useGraphMeta(), useNodeState(), useStructuralState(),
+ * or useFullGraphState() for better performance.
+ */
+export function useGraphDoc(): GraphDocContextValue {
+  const storeCtx = useGraphStore();
+  const metaCtx = useGraphMeta();
+  const graphState = useFullGraphState();
+  return {
+    ...storeCtx,
+    ...metaCtx,
+    graphState,
+  };
 }
