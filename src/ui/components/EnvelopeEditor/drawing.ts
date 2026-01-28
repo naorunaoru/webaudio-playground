@@ -1,10 +1,8 @@
 import type { EnvelopePhase } from "@nodes/envelope/types";
-import type { HandleIndex, SegmentIndex } from "./types";
 import type { SegmentPoints } from "./geometry";
 import {
   createCoordinateSystem,
   getEnvelopeSegmentPoints,
-  getHandlePositions,
   cumulativeTimeBeforePhase,
 } from "./geometry";
 
@@ -101,61 +99,6 @@ function drawCurve(
   ctx.stroke();
 }
 
-function drawDashedLine(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  pad: number,
-  h: number,
-  dpr: number,
-  color: string,
-) {
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5 * dpr;
-  ctx.setLineDash([3 * dpr, 3 * dpr]);
-  ctx.beginPath();
-  ctx.moveTo(x, pad);
-  ctx.lineTo(x, pad + h);
-  ctx.stroke();
-  ctx.setLineDash([]);
-}
-
-function drawMarkerLines(
-  ctx: CanvasRenderingContext2D,
-  phases: EnvelopePhase[],
-  segments: SegmentPoints[],
-  pad: number,
-  h: number,
-  dpr: number,
-  markerDrag?: MarkerDragVisual | null,
-) {
-  for (let i = 0; i < segments.length; i++) {
-    const phase = phases[i];
-    if (i >= phases.length - 1) continue;
-
-    const segment = segments[i]!;
-    const lastPt = segment.points[segment.points.length - 1]!;
-    const x = lastPt.x;
-
-    // Skip the line for the marker being dragged (it'll be drawn at drag position)
-    if (phase?.loopStart && !(markerDrag?.markerType === "loopStart")) {
-      drawDashedLine(ctx, x, pad, h, dpr, "rgba(129,140,248,0.5)");
-    }
-
-    if (phase?.hold && !(markerDrag?.markerType === "hold")) {
-      drawDashedLine(ctx, x, pad, h, dpr, "rgba(236,72,153,0.5)");
-    }
-  }
-
-  // Draw dashed line at dragged marker's current position
-  if (markerDrag) {
-    const color =
-      markerDrag.markerType === "loopStart"
-        ? "rgba(129,140,248,0.5)"
-        : "rgba(236,72,153,0.5)";
-    drawDashedLine(ctx, markerDrag.currentX, pad, h, dpr, color);
-  }
-}
-
 /**
  * Draw a tinted background for the loop region (from loopStart to hold).
  */
@@ -215,61 +158,6 @@ function drawPlayhead(
   ctx.stroke();
 }
 
-function drawHandle(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  isActive: boolean,
-  isSelected: boolean,
-  dpr: number,
-  reveal: number,
-) {
-  // Selected/active handles: always fully visible; others scale with reveal
-  const minRadius = isSelected ? 3 : 2;
-  const maxRadius = isActive || isSelected ? 4 : 3;
-  const radius = (minRadius + (maxRadius - minRadius) * reveal) * dpr;
-
-  const minAlpha = 1;
-  const alpha = minAlpha + (1 - minAlpha) * reveal;
-
-  if (isSelected) {
-    ctx.fillStyle = "rgba(236,72,153,0.95)";
-  } else if (isActive) {
-    ctx.fillStyle = "rgba(255,255,255,0.95)";
-  } else {
-    ctx.fillStyle = "rgba(236,239,244,0.75)";
-  }
-
-  ctx.globalAlpha = alpha;
-  ctx.lineWidth = 2 * dpr;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-}
-
-function drawMarkerHandle(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  color: string,
-  dpr: number,
-  reveal: number = 1,
-) {
-  const minRadius = 1.5;
-  const maxRadius = 3;
-  const radius = (minRadius + (maxRadius - minRadius) * reveal) * dpr;
-  const alpha = 0.35 + 0.65 * reveal;
-
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = color;
-  ctx.lineWidth = 2 * dpr;
-  ctx.beginPath();
-  ctx.arc(x, y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = 1;
-}
-
 export type MarkerDragVisual = {
   markerType: "loopStart" | "hold";
   originalPhaseIndex: number;
@@ -298,97 +186,6 @@ export function drawEnvelopeShape(
 
   const segments = getEnvelopeSegmentPoints(phases, coords);
   drawCurve(ctx, segments, dpr);
-}
-
-/**
- * Draw interactive UI overlays: marker lines, handles, hover indicator, drag visual.
- * Redrawn on pointer events, selection changes, handle radius animation.
- */
-export function drawEnvelopeUI(
-  ctx: CanvasRenderingContext2D,
-  width: number,
-  height: number,
-  dpr: number,
-  phases: EnvelopePhase[],
-  activeHandle: HandleIndex | null,
-  selectedHandle: HandleIndex | null,
-  markerDrag: MarkerDragVisual | null,
-  handleReveal: number,
-  hoveredSegment: SegmentIndex | null,
-) {
-  ctx.clearRect(0, 0, width, height);
-  if (phases.length === 0) return;
-
-  const coords = createCoordinateSystem(width, height, dpr, phases);
-  const { pad, h } = coords;
-
-  const segments = getEnvelopeSegmentPoints(phases, coords);
-  drawMarkerLines(ctx, phases, segments, pad, h, dpr, markerDrag);
-
-  // Draw midpoint marker on hovered segment
-  if (hoveredSegment !== null && hoveredSegment < segments.length) {
-    const seg = segments[hoveredSegment]!;
-    const pts = seg.points;
-    const startX = pts[0]!.x;
-    const endX = pts[pts.length - 1]!.x;
-    const midX = (startX + endX) / 2;
-
-    let bestIdx = 0;
-    let bestDist = Math.abs(pts[0]!.x - midX);
-    for (let i = 1; i < pts.length; i++) {
-      const d = Math.abs(pts[i]!.x - midX);
-      if (d < bestDist) {
-        bestDist = d;
-        bestIdx = i;
-      }
-    }
-    const midPt = pts[bestIdx]!;
-
-    const radius = 2.5 * dpr;
-    ctx.strokeStyle = "rgba(236,239,244,0.55)";
-    ctx.lineWidth = 1.25 * dpr;
-    ctx.beginPath();
-    ctx.arc(midPt.x, midPt.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
-  const handles = getHandlePositions(phases, coords);
-  for (let i = 0; i < handles.length; i++) {
-    const handle = handles[i]!;
-    drawHandle(
-      ctx,
-      handle.x,
-      handle.y,
-      activeHandle === i,
-      selectedHandle === i,
-      dpr,
-      handleReveal,
-    );
-  }
-
-  // Draw marker handles: loopStart at top, hold at bottom
-  const topY = pad;
-  const bottomY = pad + h;
-  for (let i = 0; i < phases.length - 1; i++) {
-    const phase = phases[i]!;
-    const handle = handles[i]!;
-    if (phase.loopStart && !(markerDrag?.markerType === "loopStart")) {
-      drawMarkerHandle(ctx, handle.x, topY, "rgba(129,140,248,0.9)", dpr, handleReveal);
-    }
-    if (phase.hold && !(markerDrag?.markerType === "hold")) {
-      drawMarkerHandle(ctx, handle.x, bottomY, "rgba(236,72,153,0.9)", dpr, handleReveal);
-    }
-  }
-
-  // Draw the dragged marker handle at its current drag position
-  if (markerDrag) {
-    const color =
-      markerDrag.markerType === "loopStart"
-        ? "rgba(129,140,248,0.9)"
-        : "rgba(236,72,153,0.9)";
-    const y = markerDrag.markerType === "loopStart" ? topY : bottomY;
-    drawMarkerHandle(ctx, markerDrag.currentX, y, color, dpr, handleReveal);
-  }
 }
 
 /**

@@ -1,23 +1,19 @@
 import { useEffect, useRef, useState } from "react";
-import type { EnvelopePhase } from "@nodes/envelope/types";
 import type { EnvelopeEditorProps, HandleIndex, SegmentIndex, CurveDragState } from "./types";
 import {
   HANDLE_BLEED_PX,
   getCanvasMetrics,
   createCoordinateSystem,
   getHandlePositions,
-  getEnvelopeSegmentPoints,
-  findClosestHandle,
-  findClosestSegment,
-  getMarkerPositions,
-  findHitMarker,
   findClosestHandleByX,
 } from "./geometry";
+import type { MarkerPosition } from "./geometry";
 import { applyHandleDrag, applyShapeDrag, addPhaseAfter, removePhase, togglePhaseHold, toggleLoopStart, moveLoopStart, moveHold } from "./handles";
 import type { MarkerDragVisual } from "./drawing";
 import { useShapeCanvas } from "./useShapeCanvas";
-import { useUICanvas, type UICanvasState } from "./useUICanvas";
 import { usePlayheadCanvas } from "./usePlayheadCanvas";
+import { EnvelopeInteractionLayer } from "./EnvelopeInteractionLayer";
+import type { CanvasMetrics } from "./types";
 
 export type { EnvelopeEditorProps } from "./types";
 
@@ -42,45 +38,22 @@ export function EnvelopeEditor({
   const [activeHandle, setActiveHandle] = useState<HandleIndex | null>(null);
   const [internalSelectedHandle, setInternalSelectedHandle] = useState<HandleIndex | null>(null);
   const [activeSegment, setActiveSegment] = useState<SegmentIndex | null>(null);
+  const [hoveredSegment, setHoveredSegment] = useState<SegmentIndex | null>(null);
+  const [revealed, setRevealed] = useState(false);
+  const [markerDragState, setMarkerDragState] = useState<MarkerDragVisual | null>(null);
+  const [metrics, setMetrics] = useState<CanvasMetrics | null>(null);
+
   const activePointerIdRef = useRef<number | null>(null);
   const curveDragRef = useRef<CurveDragState | null>(null);
   const markerDragRef = useRef<MarkerDragVisual | null>(null);
   const snapAnimRef = useRef<number | null>(null);
-  const isHoveredRef = useRef(false);
-  const hoveredSegmentRef = useRef<SegmentIndex | null>(null);
-  const metricsRef = useRef<ReturnType<typeof getCanvasMetrics> | null>(null);
+  const metricsRef = useRef<CanvasMetrics | null>(null);
 
-  // Cached hit-test geometry — recomputed only when phases or canvas size change
-  const hitCacheRef = useRef<{
-    phases: EnvelopePhase[];
-    width: number;
-    height: number;
-    dpr: number;
-    coords: ReturnType<typeof createCoordinateSystem>;
-    handles: ReturnType<typeof getHandlePositions>;
-    markers: ReturnType<typeof getMarkerPositions>;
-    segments: ReturnType<typeof getEnvelopeSegmentPoints>;
-  } | null>(null);
-
-  const getHitGeometry = () => {
-    const metrics = metricsRef.current;
-    if (!metrics) return null;
-
-    const { dpr, width, height } = metrics;
-    const cache = hitCacheRef.current;
-    if (cache && cache.phases === phases && cache.width === width && cache.height === height && cache.dpr === dpr) {
-      return cache;
-    }
-
-    const coords = createCoordinateSystem(width, height, dpr, phases);
-    const handles = getHandlePositions(phases, coords);
-    const markers = getMarkerPositions(phases, coords);
-    const segments = getEnvelopeSegmentPoints(phases, coords, 40);
-
-    const entry = { phases, width, height, dpr, coords, handles, markers, segments };
-    hitCacheRef.current = entry;
-    return entry;
-  };
+  const phasesRef = useRef(phases);
+  if (phasesRef.current !== phases && activePointerIdRef.current == null) {
+    markerDragRef.current = null;
+  }
+  phasesRef.current = phases;
 
   // Support both controlled and uncontrolled selection
   const isControlled = controlledSelectedPhase !== undefined;
@@ -93,41 +66,17 @@ export function EnvelopeEditor({
     }
   };
 
-  const phasesRef = useRef(phases);
-  if (phasesRef.current !== phases && activePointerIdRef.current == null) {
-    markerDragRef.current = null;
-  }
-  phasesRef.current = phases;
-
-  // UI canvas state ref — read by the UI canvas hook on each draw
-  const uiStateRef = useRef<UICanvasState>({
-    phases,
-    activeHandle,
-    selectedHandle,
-    markerDrag: null,
-    handleReveal: 0,
-    hoveredSegment: null,
-  });
-  uiStateRef.current = {
-    phases,
-    activeHandle,
-    selectedHandle,
-    markerDrag: markerDragRef.current,
-    handleReveal: 0, // managed by the hook's animation
-    hoveredSegment: hoveredSegmentRef.current,
-  };
-
-  // --- Canvas hooks ---
+  // --- Canvas hooks (shape + playhead only) ---
   const { canvasRef: shapeCanvasRef, redraw: redrawShape } = useShapeCanvas(phases, metricsRef);
-  const { canvasRef: uiCanvasRef, requestDraw } = useUICanvas(metricsRef, uiStateRef, isHoveredRef, activePointerIdRef);
   const { canvasRef: playheadCanvasRef } = usePlayheadCanvas(phasesRef, metricsRef, getRuntimeState);
 
-  // Metrics management — shared across all canvases
+  // Metrics management
   const updateMetrics = () => {
-    // Use any canvas to measure (they're all the same size)
     const canvas = shapeCanvasRef.current;
     if (!canvas) return;
-    metricsRef.current = getCanvasMetrics(canvas);
+    const m = getCanvasMetrics(canvas);
+    metricsRef.current = m;
+    setMetrics(m);
   };
 
   useEffect(() => {
@@ -139,153 +88,105 @@ export function EnvelopeEditor({
     const ro = new ResizeObserver(() => {
       updateMetrics();
       redrawShape();
-      requestDraw();
     });
     ro.observe(canvas);
     return () => ro.disconnect();
   }, []);
 
-  // Re-render triggers UI redraw (state/prop changes)
-  requestDraw();
-
   // --- Pointer event handlers ---
-  const handlePointerEnter = () => { isHoveredRef.current = true; requestDraw(); };
-  const handlePointerLeave = () => { isHoveredRef.current = false; hoveredSegmentRef.current = null; uiStateRef.current = { ...uiStateRef.current, hoveredSegment: null }; requestDraw(); };
 
-  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = uiCanvasRef.current;
-    if (!canvas) return;
+  const handlePointerEnter = () => {
+    setRevealed(true);
+  };
+
+  const handlePointerLeave = () => {
+    setRevealed(false);
+    setHoveredSegment(null);
+  };
+
+  const handleHandlePointerDown = (index: HandleIndex, e: React.PointerEvent) => {
     if (activePointerIdRef.current != null) return;
-
     activePointerIdRef.current = e.pointerId;
-    canvas.setPointerCapture(e.pointerId);
+    (e.target as Element).setPointerCapture(e.pointerId);
 
-    const geo = getHitGeometry();
-    if (!geo) return;
-    const { dpr } = metricsRef.current!;
+    setActiveHandle(index);
+    setSelectedHandle(index);
+    setActiveSegment(null);
+    curveDragRef.current = null;
+    markerDragRef.current = null;
+    setMarkerDragState(null);
+    onDragStart?.();
+  };
 
-    const px = e.nativeEvent.offsetX * dpr;
-    const py = e.nativeEvent.offsetY * dpr;
+  const handleSegmentPointerDown = (index: SegmentIndex, e: React.PointerEvent) => {
+    if (activePointerIdRef.current != null) return;
+    activePointerIdRef.current = e.pointerId;
+    (e.target as Element).setPointerCapture(e.pointerId);
 
-    const { handles, markers, segments } = geo;
-    const hitRadius = 8 * dpr;
+    const m = metricsRef.current;
+    if (!m) return;
 
-    const hitMarker = findHitMarker(px, py, markers, hitRadius);
-    if (hitMarker !== null) {
-      markerDragRef.current = {
-        markerType: hitMarker.type,
-        originalPhaseIndex: hitMarker.phaseIndex,
-        currentX: hitMarker.x,
-      };
-      uiStateRef.current = { ...uiStateRef.current, markerDrag: markerDragRef.current };
-      setActiveHandle(null);
-      setSelectedHandle(hitMarker.phaseIndex);
-      setActiveSegment(null);
-      curveDragRef.current = null;
-      onDragStart?.();
-      return;
-    }
+    const py = e.nativeEvent.offsetY * m.dpr;
 
-    const hitHandle = findClosestHandle(px, py, handles, hitRadius);
-    if (hitHandle !== null) {
-      setActiveHandle(hitHandle);
-      setSelectedHandle(hitHandle);
-      setActiveSegment(null);
-      curveDragRef.current = null;
-      markerDragRef.current = null;
-      uiStateRef.current = { ...uiStateRef.current, markerDrag: null };
-      onDragStart?.();
-      return;
-    }
+    setActiveHandle(null);
+    setSelectedHandle(index);
+    setActiveSegment(index);
+    const startShape = phases[index]?.shape ?? 0;
+    curveDragRef.current = { segmentIndex: index, startY: py, startShape };
+    markerDragRef.current = null;
+    setMarkerDragState(null);
+    onDragStart?.();
+  };
 
-    const hitSegment = findClosestSegment(px, py, segments, 7 * dpr);
-    if (hitSegment !== null) {
-      setActiveHandle(null);
-      setSelectedHandle(hitSegment);
-      setActiveSegment(hitSegment);
-      const startShape = phases[hitSegment]?.shape ?? 0;
-      curveDragRef.current = { segmentIndex: hitSegment, startY: py, startShape };
-      markerDragRef.current = null;
-      uiStateRef.current = { ...uiStateRef.current, markerDrag: null };
-      onDragStart?.();
-      return;
-    }
+  const handleMarkerPointerDown = (marker: MarkerPosition, e: React.PointerEvent) => {
+    if (activePointerIdRef.current != null) return;
+    activePointerIdRef.current = e.pointerId;
+    (e.target as Element).setPointerCapture(e.pointerId);
 
-    // Clicked empty area
+    const drag: MarkerDragVisual = {
+      markerType: marker.type,
+      originalPhaseIndex: marker.phaseIndex,
+      currentX: marker.x,
+    };
+    markerDragRef.current = drag;
+    setMarkerDragState(drag);
+    setActiveHandle(null);
+    setSelectedHandle(marker.phaseIndex);
+    setActiveSegment(null);
+    curveDragRef.current = null;
+    onDragStart?.();
+  };
+
+  const handleBackgroundPointerDown = (_e: React.PointerEvent) => {
+    // Clicked empty area — deselect
     setActiveHandle(null);
     setSelectedHandle(null);
     setActiveSegment(null);
     curveDragRef.current = null;
     markerDragRef.current = null;
-    uiStateRef.current = { ...uiStateRef.current, markerDrag: null };
-    activePointerIdRef.current = null;
-    canvas.releasePointerCapture(e.pointerId);
+    setMarkerDragState(null);
   };
 
-  const handlePointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = uiCanvasRef.current;
-    if (!canvas) return;
+  const handleSegmentHover = (index: SegmentIndex | null) => {
+    if (activePointerIdRef.current != null) return; // don't change hover during drag
+    setHoveredSegment(index);
+  };
 
-    // Update cursor on hover (when not dragging)
-    if (activePointerIdRef.current == null) {
-      const geo = getHitGeometry();
-      if (!geo) return;
-      const { dpr } = metricsRef.current!;
-      const px = e.nativeEvent.offsetX * dpr;
-      const py = e.nativeEvent.offsetY * dpr;
-      const { handles, markers, segments } = geo;
-      const hitRadius = 8 * dpr;
-
-      const prevHovered = hoveredSegmentRef.current;
-
-      const hitMarker = findHitMarker(px, py, markers, hitRadius);
-      if (hitMarker !== null) {
-        hoveredSegmentRef.current = null;
-        uiStateRef.current = { ...uiStateRef.current, hoveredSegment: null };
-        canvas.style.cursor = "grab";
-        if (prevHovered !== null) requestDraw();
-        return;
-      }
-
-      const hitHandle = findClosestHandle(px, py, handles, hitRadius);
-      if (hitHandle !== null) {
-        hoveredSegmentRef.current = null;
-        uiStateRef.current = { ...uiStateRef.current, hoveredSegment: null };
-        canvas.style.cursor = "grab";
-        if (prevHovered !== null) requestDraw();
-        return;
-      }
-
-      const hitSegment = findClosestSegment(px, py, segments, 7 * dpr);
-      if (hitSegment !== null) {
-        hoveredSegmentRef.current = hitSegment;
-        uiStateRef.current = { ...uiStateRef.current, hoveredSegment: hitSegment };
-        canvas.style.cursor = "ns-resize";
-        if (prevHovered !== hitSegment) requestDraw();
-        return;
-      }
-
-      hoveredSegmentRef.current = null;
-      uiStateRef.current = { ...uiStateRef.current, hoveredSegment: null };
-      canvas.style.cursor = "";
-      if (prevHovered !== null) requestDraw();
-      return;
-    }
-
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (activePointerIdRef.current == null) return;
     if (activePointerIdRef.current !== e.pointerId) return;
 
-    const geo = getHitGeometry();
-    if (!geo) return;
-    const { dpr } = metricsRef.current!;
+    const m = metricsRef.current;
+    if (!m) return;
+    const { dpr } = m;
 
     const px = e.nativeEvent.offsetX * dpr;
     const py = e.nativeEvent.offsetY * dpr;
 
-    const { coords, handles } = geo;
-    const nextMs = coords.msOfX(px);
-    const nextLevel = coords.levelOfY(py);
-
+    // Marker drag
     if (markerDragRef.current) {
+      const coords = createCoordinateSystem(m.width, m.height, dpr, phases);
+      const handles = getHandlePositions(phases, coords);
       const closestHandle = findClosestHandleByX(px, handles, true);
 
       if (closestHandle !== null && closestHandle !== markerDragRef.current.originalPhaseIndex) {
@@ -306,16 +207,20 @@ export function EnvelopeEditor({
           currentX: px,
         };
       }
-      uiStateRef.current = { ...uiStateRef.current, markerDrag: markerDragRef.current };
-      requestDraw();
+      setMarkerDragState({ ...markerDragRef.current });
       return;
     }
 
+    // Handle drag
     if (activeHandle !== null) {
+      const coords = createCoordinateSystem(m.width, m.height, dpr, phases);
+      const nextMs = coords.msOfX(px);
+      const nextLevel = coords.levelOfY(py);
       onChangePhases(applyHandleDrag(phases, activeHandle, nextMs, nextLevel));
       return;
     }
 
+    // Curve shape drag
     const drag = curveDragRef.current;
     if (drag && activeSegment !== null) {
       const deltaY = py - drag.startY;
@@ -323,21 +228,20 @@ export function EnvelopeEditor({
     }
   };
 
-  const handlePointerEnd = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = uiCanvasRef.current;
-    if (!canvas) return;
+  const handlePointerEnd = (e: React.PointerEvent) => {
     if (activePointerIdRef.current !== e.pointerId) return;
 
     const wasDragging = activeHandle != null || activeSegment != null || markerDragRef.current != null;
 
     const markerDrag = markerDragRef.current;
     if (markerDrag) {
-      const geo = getHitGeometry();
-      if (!geo) return;
-      const { dpr } = metricsRef.current!;
+      const m = metricsRef.current;
+      if (!m) return;
+      const { dpr } = m;
       const px = e.nativeEvent.offsetX * dpr;
 
-      const { handles } = geo;
+      const coords = createCoordinateSystem(m.width, m.height, dpr, phases);
+      const handles = getHandlePositions(phases, coords);
       const snapTarget = findClosestHandleByX(px, handles, true);
       const snapX = snapTarget !== null ? handles[snapTarget]!.x : px;
 
@@ -356,15 +260,14 @@ export function EnvelopeEditor({
         const currentX = startX + (snapX - startX) * eased;
 
         markerDragRef.current = { markerType, originalPhaseIndex: currentPhaseIndex, currentX };
-        uiStateRef.current = { ...uiStateRef.current, markerDrag: markerDragRef.current };
-        requestDraw();
+        setMarkerDragState({ ...markerDragRef.current });
 
         if (t < 1) {
           snapAnimRef.current = requestAnimationFrame(animateSnap);
         } else {
           snapAnimRef.current = null;
           markerDragRef.current = null;
-          uiStateRef.current = { ...uiStateRef.current, markerDrag: null };
+          setMarkerDragState(null);
           if (snapTarget !== null) setSelectedHandle(snapTarget);
           if (wasDragging) onDragEnd?.();
         }
@@ -374,7 +277,7 @@ export function EnvelopeEditor({
       setActiveHandle(null);
       setActiveSegment(null);
       curveDragRef.current = null;
-      canvas.releasePointerCapture(e.pointerId);
+      try { (e.target as Element).releasePointerCapture(e.pointerId); } catch { /* ok */ }
       snapAnimRef.current = requestAnimationFrame(animateSnap);
       return;
     }
@@ -384,8 +287,8 @@ export function EnvelopeEditor({
     setActiveSegment(null);
     curveDragRef.current = null;
     markerDragRef.current = null;
-    uiStateRef.current = { ...uiStateRef.current, markerDrag: null };
-    canvas.releasePointerCapture(e.pointerId);
+    setMarkerDragState(null);
+    try { (e.target as Element).releasePointerCapture(e.pointerId); } catch { /* ok */ }
     if (wasDragging) onDragEnd?.();
   };
 
@@ -437,16 +340,25 @@ export function EnvelopeEditor({
           ref={playheadCanvasRef}
           style={{ ...canvasStyle(height), pointerEvents: "none" }}
         />
-        {/* Layer 3: UI (top) — receives pointer events */}
-        <canvas
-          ref={uiCanvasRef}
-          style={{ ...canvasStyle(height), touchAction: "none" }}
-          onPointerEnter={handlePointerEnter}
-          onPointerLeave={handlePointerLeave}
-          onPointerDown={handlePointerDown}
+        {/* Layer 3: SVG interactions (top) */}
+        <EnvelopeInteractionLayer
+          phases={phases}
+          metrics={metrics}
+          activeHandle={activeHandle}
+          selectedHandle={selectedHandle}
+          hoveredSegment={hoveredSegment}
+          markerDrag={markerDragState}
+          revealed={revealed}
+          height={height}
+          onHandlePointerDown={handleHandlePointerDown}
+          onSegmentPointerDown={handleSegmentPointerDown}
+          onMarkerPointerDown={handleMarkerPointerDown}
+          onSegmentHover={handleSegmentHover}
+          onBackgroundPointerDown={handleBackgroundPointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerEnd}
-          onPointerCancel={handlePointerEnd}
+          onPointerEnter={handlePointerEnter}
+          onPointerLeave={handlePointerLeave}
         />
       </div>
 
