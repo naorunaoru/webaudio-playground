@@ -44,6 +44,17 @@ function toPointsStr(pts: Array<{ x: number; y: number }>): string {
   return s;
 }
 
+// Build one continuous points string from all segments
+function allPointsStr(segments: SegmentPoints[]): string {
+  const all: Array<{ x: number; y: number }> = [];
+  for (const seg of segments) {
+    for (const pt of seg.points) {
+      all.push(pt);
+    }
+  }
+  return toPointsStr(all);
+}
+
 export function EnvelopeInteractionLayer({
   phases,
   metrics,
@@ -81,13 +92,13 @@ export function EnvelopeInteractionLayer({
   const geo = useMemo(() => {
     const coords = createCoordinateSystem(width, canvasH, dpr, phases);
     const handles = getHandlePositions(phases, coords);
-    const segments = getEnvelopeSegmentPoints(phases, coords, 40);
+    const segments = getEnvelopeSegmentPoints(phases, coords);
     const markers = getMarkerPositions(phases, coords);
     return { coords, handles, segments, markers };
   }, [phases, width, canvasH, dpr]);
 
   const { coords, handles, segments, markers } = geo;
-  const { pad, h } = coords;
+  const { pad, w, h, totalMs, xOfMs } = coords;
   const topY = pad;
   const bottomY = pad + h;
 
@@ -116,6 +127,21 @@ export function EnvelopeInteractionLayer({
         fill="none"
         pointerEvents="all"
         onPointerDown={onBackgroundPointerDown}
+      />
+
+      {/* Grid */}
+      <Grid pad={pad} w={w} h={h} dpr={dpr} totalMs={totalMs} xOfMs={xOfMs} />
+
+      {/* Loop region background */}
+      <LoopRegion phases={phases} pad={pad} h={h} xOfMs={xOfMs} />
+
+      {/* Visible envelope curve */}
+      <polyline
+        points={allPointsStr(segments)}
+        fill="none"
+        stroke="rgba(236,239,244,0.9)"
+        strokeWidth={1.25 * dpr}
+        pointerEvents="none"
       />
 
       {/* Marker dashed lines */}
@@ -407,6 +433,99 @@ function markerRadius(revealT: number, dpr: number): number {
   const minR = 1.5;
   const maxR = 3;
   return (minR + (maxR - minR) * revealT) * dpr;
+}
+
+function chooseTimeInterval(totalMs: number): number {
+  const intervals = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+  for (const interval of intervals) {
+    const lineCount = Math.floor(totalMs / interval);
+    if (lineCount >= 3 && lineCount <= 8) return interval;
+  }
+  const targetLines = 5;
+  const rawInterval = totalMs / targetLines;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawInterval)));
+  const normalized = rawInterval / magnitude;
+  let nice: number;
+  if (normalized <= 1.5) nice = 1;
+  else if (normalized <= 3) nice = 2;
+  else if (normalized <= 7) nice = 5;
+  else nice = 10;
+  return nice * magnitude;
+}
+
+function Grid({
+  pad,
+  w,
+  h,
+  dpr,
+  totalMs,
+  xOfMs,
+}: {
+  pad: number;
+  w: number;
+  h: number;
+  dpr: number;
+  totalMs: number;
+  xOfMs: (ms: number) => number;
+}) {
+  const lines: React.ReactNode[] = [];
+  const sw = 1 * dpr;
+
+  // Vertical lines at time intervals
+  const interval = chooseTimeInterval(totalMs);
+  for (let ms = interval; ms < totalMs; ms += interval) {
+    const x = xOfMs(ms);
+    lines.push(
+      <line key={`gv-${ms}`} x1={x} y1={pad} x2={x} y2={pad + h} stroke="rgba(255,255,255,0.08)" strokeWidth={sw} />,
+    );
+  }
+
+  // Horizontal lines: 0, 0.5, 1.0
+  for (let i = 0; i <= 2; i++) {
+    const y = pad + (h * i) / 2;
+    lines.push(
+      <line key={`gh-${i}`} x1={pad} y1={y} x2={pad + w} y2={y} stroke="rgba(255,255,255,0.08)" strokeWidth={sw} />,
+    );
+  }
+
+  return <g pointerEvents="none">{lines}</g>;
+}
+
+function LoopRegion({
+  phases,
+  pad,
+  h,
+  xOfMs,
+}: {
+  phases: EnvelopePhase[];
+  pad: number;
+  h: number;
+  xOfMs: (ms: number) => number;
+}) {
+  let loopStartIdx = -1;
+  let holdIdx = -1;
+  for (let i = 0; i < phases.length; i++) {
+    if (phases[i]?.loopStart) loopStartIdx = i;
+    if (phases[i]?.hold) holdIdx = i;
+  }
+  if (loopStartIdx < 0 || holdIdx < 0 || loopStartIdx > holdIdx) return null;
+
+  const startMs = cumulativeTimeBeforePhase(phases, loopStartIdx) + phases[loopStartIdx]!.durationMs;
+  const endMs = cumulativeTimeBeforePhase(phases, holdIdx) + phases[holdIdx]!.durationMs;
+
+  const x1 = xOfMs(startMs);
+  const x2 = xOfMs(endMs);
+
+  return (
+    <rect
+      x={x1}
+      y={pad}
+      width={x2 - x1}
+      height={h}
+      fill="rgba(129,140,248,0.08)"
+      pointerEvents="none"
+    />
+  );
 }
 
 const layerStyle = (height: number): React.CSSProperties => ({

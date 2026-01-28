@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import type { EnvelopeEditorProps, HandleIndex, SegmentIndex, CurveDragState } from "./types";
+import type {
+  EnvelopeEditorProps,
+  HandleIndex,
+  SegmentIndex,
+  CurveDragState,
+} from "./types";
 import {
   HANDLE_BLEED_PX,
   getCanvasMetrics,
@@ -8,9 +13,17 @@ import {
   findClosestHandleByX,
 } from "./geometry";
 import type { MarkerPosition } from "./geometry";
-import { applyHandleDrag, applyShapeDrag, addPhaseAfter, removePhase, togglePhaseHold, toggleLoopStart, moveLoopStart, moveHold } from "./handles";
+import {
+  applyHandleDrag,
+  applyShapeDrag,
+  addPhaseAfter,
+  removePhase,
+  togglePhaseHold,
+  toggleLoopStart,
+  moveLoopStart,
+  moveHold,
+} from "./handles";
 import type { MarkerDragVisual } from "./drawing";
-import { useShapeCanvas } from "./useShapeCanvas";
 import { usePlayheadCanvas } from "./usePlayheadCanvas";
 import { EnvelopeInteractionLayer } from "./EnvelopeInteractionLayer";
 import type { CanvasMetrics } from "./types";
@@ -36,11 +49,15 @@ export function EnvelopeEditor({
   onSelectPhase,
 }: EnvelopeEditorProps) {
   const [activeHandle, setActiveHandle] = useState<HandleIndex | null>(null);
-  const [internalSelectedHandle, setInternalSelectedHandle] = useState<HandleIndex | null>(null);
+  const [internalSelectedHandle, setInternalSelectedHandle] =
+    useState<HandleIndex | null>(null);
   const [activeSegment, setActiveSegment] = useState<SegmentIndex | null>(null);
-  const [hoveredSegment, setHoveredSegment] = useState<SegmentIndex | null>(null);
+  const [hoveredSegment, setHoveredSegment] = useState<SegmentIndex | null>(
+    null,
+  );
   const [revealed, setRevealed] = useState(false);
-  const [markerDragState, setMarkerDragState] = useState<MarkerDragVisual | null>(null);
+  const [markerDragState, setMarkerDragState] =
+    useState<MarkerDragVisual | null>(null);
   const [metrics, setMetrics] = useState<CanvasMetrics | null>(null);
 
   const activePointerIdRef = useRef<number | null>(null);
@@ -57,7 +74,9 @@ export function EnvelopeEditor({
 
   // Support both controlled and uncontrolled selection
   const isControlled = controlledSelectedPhase !== undefined;
-  const selectedHandle = isControlled ? controlledSelectedPhase : internalSelectedHandle;
+  const selectedHandle = isControlled
+    ? controlledSelectedPhase
+    : internalSelectedHandle;
   const setSelectedHandle = (index: HandleIndex | null) => {
     if (isControlled) {
       onSelectPhase?.(index);
@@ -66,13 +85,16 @@ export function EnvelopeEditor({
     }
   };
 
-  // --- Canvas hooks (shape + playhead only) ---
-  const { canvasRef: shapeCanvasRef, redraw: redrawShape } = useShapeCanvas(phases, metricsRef);
-  const { canvasRef: playheadCanvasRef } = usePlayheadCanvas(phasesRef, metricsRef, getRuntimeState);
+  // --- Canvas hooks (playhead only) ---
+  const { canvasRef: playheadCanvasRef } = usePlayheadCanvas(
+    phasesRef,
+    metricsRef,
+    getRuntimeState,
+  );
 
   // Metrics management
   const updateMetrics = () => {
-    const canvas = shapeCanvasRef.current;
+    const canvas = playheadCanvasRef.current;
     if (!canvas) return;
     const m = getCanvasMetrics(canvas);
     metricsRef.current = m;
@@ -80,14 +102,13 @@ export function EnvelopeEditor({
   };
 
   useEffect(() => {
-    const canvas = shapeCanvasRef.current;
+    const canvas = playheadCanvasRef.current;
     if (!canvas) return;
 
     updateMetrics();
 
     const ro = new ResizeObserver(() => {
       updateMetrics();
-      redrawShape();
     });
     ro.observe(canvas);
     return () => ro.disconnect();
@@ -104,7 +125,10 @@ export function EnvelopeEditor({
     setHoveredSegment(null);
   };
 
-  const handleHandlePointerDown = (index: HandleIndex, e: React.PointerEvent) => {
+  const handleHandlePointerDown = (
+    index: HandleIndex,
+    e: React.PointerEvent,
+  ) => {
     if (activePointerIdRef.current != null) return;
     activePointerIdRef.current = e.pointerId;
     (e.target as Element).setPointerCapture(e.pointerId);
@@ -118,7 +142,10 @@ export function EnvelopeEditor({
     onDragStart?.();
   };
 
-  const handleSegmentPointerDown = (index: SegmentIndex, e: React.PointerEvent) => {
+  const handleSegmentPointerDown = (
+    index: SegmentIndex,
+    e: React.PointerEvent,
+  ) => {
     if (activePointerIdRef.current != null) return;
     activePointerIdRef.current = e.pointerId;
     (e.target as Element).setPointerCapture(e.pointerId);
@@ -138,7 +165,10 @@ export function EnvelopeEditor({
     onDragStart?.();
   };
 
-  const handleMarkerPointerDown = (marker: MarkerPosition, e: React.PointerEvent) => {
+  const handleMarkerPointerDown = (
+    marker: MarkerPosition,
+    e: React.PointerEvent,
+  ) => {
     if (activePointerIdRef.current != null) return;
     activePointerIdRef.current = e.pointerId;
     (e.target as Element).setPointerCapture(e.pointerId);
@@ -189,7 +219,10 @@ export function EnvelopeEditor({
       const handles = getHandlePositions(phases, coords);
       const closestHandle = findClosestHandleByX(px, handles, true);
 
-      if (closestHandle !== null && closestHandle !== markerDragRef.current.originalPhaseIndex) {
+      if (
+        closestHandle !== null &&
+        closestHandle !== markerDragRef.current.originalPhaseIndex
+      ) {
         const markerType = markerDragRef.current.markerType;
         if (markerType === "loopStart") {
           onChangePhases(moveLoopStart(phases, closestHandle));
@@ -224,14 +257,19 @@ export function EnvelopeEditor({
     const drag = curveDragRef.current;
     if (drag && activeSegment !== null) {
       const deltaY = py - drag.startY;
-      onChangePhases(applyShapeDrag(phases, activeSegment, drag.startShape, deltaY, dpr));
+      onChangePhases(
+        applyShapeDrag(phases, activeSegment, drag.startShape, deltaY, dpr),
+      );
     }
   };
 
   const handlePointerEnd = (e: React.PointerEvent) => {
     if (activePointerIdRef.current !== e.pointerId) return;
 
-    const wasDragging = activeHandle != null || activeSegment != null || markerDragRef.current != null;
+    const wasDragging =
+      activeHandle != null ||
+      activeSegment != null ||
+      markerDragRef.current != null;
 
     const markerDrag = markerDragRef.current;
     if (markerDrag) {
@@ -251,7 +289,8 @@ export function EnvelopeEditor({
       const markerType = markerDrag.markerType;
       const currentPhaseIndex = markerDrag.originalPhaseIndex;
 
-      if (snapAnimRef.current != null) cancelAnimationFrame(snapAnimRef.current);
+      if (snapAnimRef.current != null)
+        cancelAnimationFrame(snapAnimRef.current);
 
       const animateSnap = (now: number) => {
         const elapsed = now - startTime;
@@ -259,7 +298,11 @@ export function EnvelopeEditor({
         const eased = 1 - Math.pow(1 - t, 3);
         const currentX = startX + (snapX - startX) * eased;
 
-        markerDragRef.current = { markerType, originalPhaseIndex: currentPhaseIndex, currentX };
+        markerDragRef.current = {
+          markerType,
+          originalPhaseIndex: currentPhaseIndex,
+          currentX,
+        };
         setMarkerDragState({ ...markerDragRef.current });
 
         if (t < 1) {
@@ -277,7 +320,11 @@ export function EnvelopeEditor({
       setActiveHandle(null);
       setActiveSegment(null);
       curveDragRef.current = null;
-      try { (e.target as Element).releasePointerCapture(e.pointerId); } catch { /* ok */ }
+      try {
+        (e.target as Element).releasePointerCapture(e.pointerId);
+      } catch {
+        /* ok */
+      }
       snapAnimRef.current = requestAnimationFrame(animateSnap);
       return;
     }
@@ -288,7 +335,11 @@ export function EnvelopeEditor({
     curveDragRef.current = null;
     markerDragRef.current = null;
     setMarkerDragState(null);
-    try { (e.target as Element).releasePointerCapture(e.pointerId); } catch { /* ok */ }
+    try {
+      (e.target as Element).releasePointerCapture(e.pointerId);
+    } catch {
+      /* ok */
+    }
     if (wasDragging) onDragEnd?.();
   };
 
@@ -316,7 +367,8 @@ export function EnvelopeEditor({
     onChangePhases(toggleLoopStart(phases, selectedHandle));
   };
 
-  const selectedPhaseData = selectedHandle !== null ? phases[selectedHandle] : null;
+  const selectedPhaseData =
+    selectedHandle !== null ? phases[selectedHandle] : null;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -330,17 +382,12 @@ export function EnvelopeEditor({
           overflow: "visible",
         }}
       >
-        {/* Layer 1: Shape (bottom) */}
-        <canvas
-          ref={shapeCanvasRef}
-          style={{ ...canvasStyle(height), pointerEvents: "none" }}
-        />
-        {/* Layer 2: Playheads */}
+        {/* Playhead canvas */}
         <canvas
           ref={playheadCanvasRef}
           style={{ ...canvasStyle(height), pointerEvents: "none" }}
         />
-        {/* Layer 3: SVG interactions (top) */}
+        {/* SVG: grid, curve, handles, interactions */}
         <EnvelopeInteractionLayer
           phases={phases}
           metrics={metrics}
@@ -395,11 +442,15 @@ export function EnvelopeEditor({
               background: "rgba(255,255,255,0.1)",
               border: "1px solid rgba(255,255,255,0.2)",
               borderRadius: 3,
-              color: phases.length <= 1 || selectedHandle === null
-                ? "rgba(255,255,255,0.3)"
-                : "rgba(255,255,255,0.8)",
+              color:
+                phases.length <= 1 || selectedHandle === null
+                  ? "rgba(255,255,255,0.3)"
+                  : "rgba(255,255,255,0.8)",
               padding: "2px 8px",
-              cursor: phases.length <= 1 || selectedHandle === null ? "not-allowed" : "pointer",
+              cursor:
+                phases.length <= 1 || selectedHandle === null
+                  ? "not-allowed"
+                  : "pointer",
               fontSize: 11,
             }}
           >
@@ -418,16 +469,28 @@ export function EnvelopeEditor({
               display: "flex",
               alignItems: "center",
               gap: 4,
-              cursor: selectedHandle !== null && selectedHandle !== phases.length - 1 ? "pointer" : "not-allowed",
-              opacity: selectedHandle !== null && selectedHandle !== phases.length - 1 ? 1 : 0.5,
+              cursor:
+                selectedHandle !== null && selectedHandle !== phases.length - 1
+                  ? "pointer"
+                  : "not-allowed",
+              opacity:
+                selectedHandle !== null && selectedHandle !== phases.length - 1
+                  ? 1
+                  : 0.5,
             }}
-            title={selectedHandle === phases.length - 1 ? "Cannot set loop start on last phase" : undefined}
+            title={
+              selectedHandle === phases.length - 1
+                ? "Cannot set loop start on last phase"
+                : undefined
+            }
           >
             <input
               type="checkbox"
               checked={selectedPhaseData?.loopStart ?? false}
               onChange={handleToggleLoopStart}
-              disabled={selectedHandle === null || selectedHandle === phases.length - 1}
+              disabled={
+                selectedHandle === null || selectedHandle === phases.length - 1
+              }
               style={{ margin: 0 }}
             />
             Loop Start
@@ -437,16 +500,28 @@ export function EnvelopeEditor({
               display: "flex",
               alignItems: "center",
               gap: 4,
-              cursor: selectedHandle !== null && selectedHandle !== phases.length - 1 ? "pointer" : "not-allowed",
-              opacity: selectedHandle !== null && selectedHandle !== phases.length - 1 ? 1 : 0.5,
+              cursor:
+                selectedHandle !== null && selectedHandle !== phases.length - 1
+                  ? "pointer"
+                  : "not-allowed",
+              opacity:
+                selectedHandle !== null && selectedHandle !== phases.length - 1
+                  ? 1
+                  : 0.5,
             }}
-            title={selectedHandle === phases.length - 1 ? "Cannot hold on last phase" : undefined}
+            title={
+              selectedHandle === phases.length - 1
+                ? "Cannot hold on last phase"
+                : undefined
+            }
           >
             <input
               type="checkbox"
               checked={selectedPhaseData?.hold ?? false}
               onChange={handleToggleHold}
-              disabled={selectedHandle === null || selectedHandle === phases.length - 1}
+              disabled={
+                selectedHandle === null || selectedHandle === phases.length - 1
+              }
               style={{ margin: 0 }}
             />
             Hold
