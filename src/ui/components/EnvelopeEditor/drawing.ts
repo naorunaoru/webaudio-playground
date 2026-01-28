@@ -12,21 +12,59 @@ export type Playhead = {
   level: number;
 };
 
+/**
+ * Choose a nice round interval for grid lines based on total duration.
+ * Returns an interval in milliseconds that produces 3-8 grid lines.
+ */
+function chooseTimeInterval(totalMs: number): number {
+  // Nice round intervals to choose from (in ms)
+  const intervals = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+
+  for (const interval of intervals) {
+    const lineCount = Math.floor(totalMs / interval);
+    if (lineCount >= 3 && lineCount <= 8) {
+      return interval;
+    }
+  }
+
+  // Fallback: if total is very small or very large, compute a reasonable interval
+  const targetLines = 5;
+  const rawInterval = totalMs / targetLines;
+  // Round to nearest nice number
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawInterval)));
+  const normalized = rawInterval / magnitude;
+
+  let nice: number;
+  if (normalized <= 1.5) nice = 1;
+  else if (normalized <= 3) nice = 2;
+  else if (normalized <= 7) nice = 5;
+  else nice = 10;
+
+  return nice * magnitude;
+}
+
 function drawGrid(
   ctx: CanvasRenderingContext2D,
   pad: number,
   w: number,
   h: number,
-  dpr: number
+  dpr: number,
+  totalMs: number,
+  xOfMs: (ms: number) => number
 ) {
   ctx.strokeStyle = "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1 * dpr;
   ctx.beginPath();
-  for (let i = 0; i <= 4; i++) {
-    const x = pad + (w * i) / 4;
+
+  // Vertical lines at time intervals
+  const interval = chooseTimeInterval(totalMs);
+  for (let ms = interval; ms < totalMs; ms += interval) {
+    const x = xOfMs(ms);
     ctx.moveTo(x, pad);
     ctx.lineTo(x, pad + h);
   }
+
+  // Horizontal lines: keep simple 3-line grid (0, 0.5, 1.0)
   for (let i = 0; i <= 2; i++) {
     const y = pad + (h * i) / 2;
     ctx.moveTo(pad, y);
@@ -155,7 +193,7 @@ export function drawEnvelope(
   const coords = createCoordinateSystem(width, height, dpr, phases);
   const { pad, w, h, totalMs, xOfMs } = coords;
 
-  drawGrid(ctx, pad, w, h, dpr);
+  drawGrid(ctx, pad, w, h, dpr, totalMs, xOfMs);
 
   const segments = getEnvelopeSegmentPoints(phases, coords);
   drawCurve(ctx, segments, phases, dpr);

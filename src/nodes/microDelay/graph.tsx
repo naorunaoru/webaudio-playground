@@ -50,7 +50,7 @@ const MicroDelayUi: React.FC<NodeUiProps<MicroDelayNode>> = ({
           label="Time"
           format={() => format(delayMs)}
           unit={unit}
-          logarithmic
+          // logarithmic ?
           onDragStart={startBatch}
           onDragEnd={endBatch}
         />
