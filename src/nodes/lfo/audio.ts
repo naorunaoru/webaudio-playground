@@ -1,7 +1,6 @@
 import type { GraphNode, NodeId, VoiceEvent } from "@graph/types";
 import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
 import type { AudioNodeServices } from "@/types/nodeModule";
-import { rmsFromAnalyser } from "@utils/audio";
 import lfoProcessorUrl from "./processor.ts?worklet";
 
 type LfoGraphNode = Extract<GraphNode, { type: "lfo" }>;
@@ -34,21 +33,26 @@ function createLfoRuntime(
     cvOutputs.push(output);
   }
 
-  // Meter on combined output for level display
+  // Lightweight meter: average all voices into a single sample
+  // Each voice is attenuated by 1/MAX_VOICES before summing to avoid clipping
   const meterMixer = ctx.createGain();
-  meterMixer.gain.value = 1 / MAX_VOICES;
+  meterMixer.gain.value = 1;
   const meter = ctx.createAnalyser();
-  meter.fftSize = 256;
-  meter.smoothingTimeConstant = 0.6;
-  const meterBuffer = new Float32Array(
-    meter.fftSize
-  ) as Float32Array<ArrayBufferLike>;
+  meter.fftSize = 32;
+  meter.smoothingTimeConstant = 0;
+  const meterBuffer = new Float32Array(32);
   meterMixer.connect(meter);
 
-  // Connect splitter outputs to individual output gains and to meter
+  const meterAttenuators: GainNode[] = [];
+
+  // Connect splitter outputs to individual output gains and to meter mixer
   for (let i = 0; i < MAX_VOICES; i++) {
     outputSplitter.connect(cvOutputs[i], i);
-    outputSplitter.connect(meterMixer, i);
+    const att = ctx.createGain();
+    att.gain.value = 1 / MAX_VOICES;
+    outputSplitter.connect(att, i);
+    att.connect(meterMixer);
+    meterAttenuators.push(att);
   }
 
   let worklet: AudioWorkletNode | null = null;
@@ -150,6 +154,9 @@ function createLfoRuntime(
       try {
         meter.disconnect();
         meterMixer.disconnect();
+        for (const att of meterAttenuators) {
+          att.disconnect();
+        }
         outputSplitter.disconnect();
         for (const output of cvOutputs) {
           output.disconnect();
@@ -159,7 +166,10 @@ function createLfoRuntime(
       }
     },
 
-    getLevel: () => rmsFromAnalyser(meter, meterBuffer),
+    getLevel: () => {
+      meter.getFloatTimeDomainData(meterBuffer);
+      return Math.abs(meterBuffer[meterBuffer.length - 1]!);
+    },
   };
 }
 

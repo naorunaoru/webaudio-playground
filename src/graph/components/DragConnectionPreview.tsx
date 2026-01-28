@@ -1,23 +1,23 @@
-import type { DragState, GraphNode, GraphState, PortKind } from "@graph/types";
+import type { DragState, GraphNode } from "@graph/types";
 import { portKindColor } from "@graph/nodeRegistry";
 import { bezierPath } from "@graph/coordinates";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT } from "@graph/layout";
-import { findNode, portById, portColumnIndex, portMetaForNode } from "@graph/graphUtils";
+import { portById, portColumnIndex, portMetaForNode } from "@graph/graphUtils";
 
 export type DragConnectionPreviewProps = {
   drag: DragState;
-  graph: GraphState;
+  getNode: (nodeId: string) => GraphNode | undefined;
   nodeWidths: Record<string, number>;
 };
 
 export function DragConnectionPreview({
   drag,
-  graph,
+  getNode,
   nodeWidths,
 }: DragConnectionPreviewProps) {
   if (drag.type !== "connect") return null;
 
-  const fromNode = findNode(graph, drag.from.nodeId);
+  const fromNode = getNode(drag.from.nodeId);
   if (!fromNode) return null;
 
   const ports = portMetaForNode(fromNode);

@@ -2,7 +2,6 @@ import type { AudioGraphContext } from "@audio/context";
 import type { GraphNode, NodeId } from "@graph/types";
 import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
 import type { AudioNodeServices } from "@/types/nodeModule";
-import { rmsFromAnalyser } from "@utils/audio";
 import vcoProcessorUrl from "./processor.ts?worklet";
 
 type VcoGraphNode = Extract<GraphNode, { type: "vco" }>;
@@ -63,19 +62,9 @@ function createVcoRuntime(
     audioOutputs.push(output);
   }
 
-  // Meter on combined output for level display
-  const meterMixer = ctx.createGain();
-  meterMixer.gain.value = 1 / MAX_VOICES; // Normalize
-  const meter = ctx.createAnalyser();
-  meter.fftSize = 256;
-  meter.smoothingTimeConstant = 0.6;
-  const meterBuffer = new Float32Array(meter.fftSize) as Float32Array<ArrayBufferLike>;
-  meterMixer.connect(meter);
-
-  // Connect splitter outputs to individual output gains and to meter
+  // Connect splitter outputs to individual output gains
   for (let i = 0; i < MAX_VOICES; i++) {
     outputSplitter.connect(audioOutputs[i], i);
-    outputSplitter.connect(meterMixer, i);
   }
 
   let worklet: AudioWorkletNode | null = null;
@@ -162,8 +151,6 @@ function createVcoRuntime(
       unsubscribeA4();
       destroyWorklet();
       try {
-        meter.disconnect();
-        meterMixer.disconnect();
         outputSplitter.disconnect();
         pitchMerger.disconnect();
         phaseModMerger.disconnect();
@@ -180,7 +167,7 @@ function createVcoRuntime(
         // ignore
       }
     },
-    getLevel: () => rmsFromAnalyser(meter, meterBuffer),
+    getLevel: () => (worklet ? 1 : 0),
   };
 }
 

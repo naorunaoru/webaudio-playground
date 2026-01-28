@@ -276,7 +276,35 @@ export type MarkerDragVisual = {
   currentX: number;
 };
 
-export function drawEnvelope(
+/**
+ * Draw the static envelope shape: grid, loop region background, curve.
+ * Redrawn only when phases change or canvas resizes.
+ */
+export function drawEnvelopeShape(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  dpr: number,
+  phases: EnvelopePhase[],
+) {
+  ctx.clearRect(0, 0, width, height);
+  if (phases.length === 0) return;
+
+  const coords = createCoordinateSystem(width, height, dpr, phases);
+  const { pad, w, h, totalMs, xOfMs } = coords;
+
+  drawGrid(ctx, pad, w, h, dpr, totalMs, xOfMs);
+  drawLoopRegion(ctx, phases, pad, h, xOfMs, cumulativeTimeBeforePhase);
+
+  const segments = getEnvelopeSegmentPoints(phases, coords);
+  drawCurve(ctx, segments, dpr);
+}
+
+/**
+ * Draw interactive UI overlays: marker lines, handles, hover indicator, drag visual.
+ * Redrawn on pointer events, selection changes, handle radius animation.
+ */
+export function drawEnvelopeUI(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
@@ -284,26 +312,18 @@ export function drawEnvelope(
   phases: EnvelopePhase[],
   activeHandle: HandleIndex | null,
   selectedHandle: HandleIndex | null,
-  playheads: Playhead[],
-  markerDrag?: MarkerDragVisual | null,
-  handleReveal: number = 1,
-  hoveredSegment: SegmentIndex | null = null,
+  markerDrag: MarkerDragVisual | null,
+  handleReveal: number,
+  hoveredSegment: SegmentIndex | null,
 ) {
   ctx.clearRect(0, 0, width, height);
-
   if (phases.length === 0) return;
 
   const coords = createCoordinateSystem(width, height, dpr, phases);
-  const { pad, w, h, totalMs, xOfMs } = coords;
-
-  drawGrid(ctx, pad, w, h, dpr, totalMs, xOfMs);
-
-  // Draw loop region background (before curve so it's behind)
-  drawLoopRegion(ctx, phases, pad, h, xOfMs, cumulativeTimeBeforePhase);
+  const { pad, h } = coords;
 
   const segments = getEnvelopeSegmentPoints(phases, coords);
   drawMarkerLines(ctx, phases, segments, pad, h, dpr, markerDrag);
-  drawCurve(ctx, segments, dpr);
 
   // Draw midpoint marker on hovered segment
   if (hoveredSegment !== null && hoveredSegment < segments.length) {
@@ -313,7 +333,6 @@ export function drawEnvelope(
     const endX = pts[pts.length - 1]!.x;
     const midX = (startX + endX) / 2;
 
-    // Find the curve point closest to the horizontal midpoint
     let bestIdx = 0;
     let bestDist = Math.abs(pts[0]!.x - midX);
     for (let i = 1; i < pts.length; i++) {
@@ -333,14 +352,6 @@ export function drawEnvelope(
     ctx.stroke();
   }
 
-  // Draw all playheads with decreasing opacity for secondary voices
-  for (let i = 0; i < playheads.length; i++) {
-    const playhead = playheads[i]!;
-    // First playhead is full opacity, others fade slightly
-    const alpha = i === 0 ? 0.65 : Math.max(0.25, 0.5 - i * 0.05);
-    drawPlayhead(ctx, playhead, totalMs, pad, h, xOfMs, dpr, alpha);
-  }
-
   const handles = getHandlePositions(phases, coords);
   for (let i = 0; i < handles.length; i++) {
     const handle = handles[i]!;
@@ -356,31 +367,16 @@ export function drawEnvelope(
   }
 
   // Draw marker handles: loopStart at top, hold at bottom
-  // Skip the dragged marker type in the loop — it's drawn separately below
   const topY = pad;
   const bottomY = pad + h;
   for (let i = 0; i < phases.length - 1; i++) {
     const phase = phases[i]!;
     const handle = handles[i]!;
     if (phase.loopStart && !(markerDrag?.markerType === "loopStart")) {
-      drawMarkerHandle(
-        ctx,
-        handle.x,
-        topY,
-        "rgba(129,140,248,0.9)",
-        dpr,
-        handleReveal,
-      );
+      drawMarkerHandle(ctx, handle.x, topY, "rgba(129,140,248,0.9)", dpr, handleReveal);
     }
     if (phase.hold && !(markerDrag?.markerType === "hold")) {
-      drawMarkerHandle(
-        ctx,
-        handle.x,
-        bottomY,
-        "rgba(236,72,153,0.9)",
-        dpr,
-        handleReveal,
-      );
+      drawMarkerHandle(ctx, handle.x, bottomY, "rgba(236,72,153,0.9)", dpr, handleReveal);
     }
   }
 
@@ -392,6 +388,32 @@ export function drawEnvelope(
         : "rgba(236,72,153,0.9)";
     const y = markerDrag.markerType === "loopStart" ? topY : bottomY;
     drawMarkerHandle(ctx, markerDrag.currentX, y, color, dpr, handleReveal);
+  }
+}
+
+/**
+ * Draw playhead lines only.
+ * Redrawn continuously via rAF while voices are active.
+ */
+export function drawEnvelopePlayheads(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  dpr: number,
+  phases: EnvelopePhase[],
+  playheads: Playhead[],
+  count: number = playheads.length,
+) {
+  ctx.clearRect(0, 0, width, height);
+  if (phases.length === 0 || count === 0) return;
+
+  const coords = createCoordinateSystem(width, height, dpr, phases);
+  const { pad, h, totalMs, xOfMs } = coords;
+
+  for (let i = 0; i < count; i++) {
+    const playhead = playheads[i]!;
+    const alpha = i === 0 ? 0.65 : Math.max(0.25, 0.5 - i * 0.05);
+    drawPlayhead(ctx, playhead, totalMs, pad, h, xOfMs, dpr, alpha);
   }
 }
 

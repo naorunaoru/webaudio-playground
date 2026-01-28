@@ -126,21 +126,17 @@ export class AudioEngine {
     };
   }
 
-  getLevels(): Record<NodeId, number> {
-    const out: Record<NodeId, number> = {};
-
-    for (const [id, n] of this.audioNodes) {
-      if (n.getLevel) out[id] = n.getLevel();
-    }
-
-    const master =
-      this.masterMeter && this.masterMeterBuffer
+  getLevel(nodeId: NodeId): number {
+    if (this.outputNodeIds.has(nodeId)) {
+      return this.masterMeter && this.masterMeterBuffer
         ? rmsFromAnalyser(this.masterMeter, this.masterMeterBuffer)
         : 0;
-    for (const outId of this.outputNodeIds) out[outId] = master;
+    }
 
-    return out;
+    const node = this.audioNodes.get(nodeId);
+    return node?.getLevel?.() ?? 0;
   }
+
 
   getRuntimeState(): Record<NodeId, unknown> {
     const out: Record<NodeId, unknown> = {};

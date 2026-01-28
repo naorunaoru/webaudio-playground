@@ -8,6 +8,31 @@ import type {
 import type { GraphDoc, DocNode, DocConnection } from "./types";
 
 /**
+ * Convert a single DocNode to a GraphNode.
+ */
+export function docNodeToGraphNode(n: DocNode): GraphNode {
+  return {
+    id: n.id,
+    type: n.type,
+    x: n.x,
+    y: n.y,
+    state: n.state,
+  } as GraphNode;
+}
+
+/**
+ * Convert a single DocConnection to a GraphConnection.
+ */
+export function docConnToGraphConn(c: DocConnection): GraphConnection {
+  return {
+    id: c.id,
+    kind: c.kind,
+    from: c.from,
+    to: c.to,
+  };
+}
+
+/**
  * Convert GraphDoc (map-based) to GraphState (array-based) for UI and audio engine.
  */
 export function docToGraphState(doc: GraphDoc): GraphState {

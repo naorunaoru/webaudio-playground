@@ -531,6 +531,17 @@ function createEnvelopeRuntime(
       }
     },
     getRuntimeState: computeRuntimeState,
+    getLevel: () => {
+      let max = 0;
+      for (let i = 0; i < MAX_VOICES; i++) {
+        const v = voiceStates[i]!;
+        if (v.gateOn || v.phaseIndex >= 0 || v.phaseStartAtSec != null) {
+          const level = computeCurrentLevel(i);
+          if (level > max) max = level;
+        }
+      }
+      return max;
+    },
   };
 }
 

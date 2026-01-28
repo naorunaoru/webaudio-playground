@@ -9,14 +9,12 @@ import {
   useState,
 } from "react";
 import styles from "./GraphEditor.module.css";
-import { getAudioEngine } from "@audio/engine";
 import type {
   ConnectionEndpoint,
   GraphConnection,
   GraphNode,
   PortKind,
 } from "./types";
-import { getNodeDef } from "./nodeRegistry";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT, nodeHeight } from "./layout";
 import {
   bezierPath,
@@ -29,10 +27,14 @@ import {
   DragConnectionPreview,
   GraphConnectionPath,
   GraphHUD,
-  GraphNodeCard,
+  GraphNodeCardContainer,
 } from "./components";
 import { createId } from "./id";
-import { useGraphDoc } from "@state";
+import {
+  useGraphStore,
+  useGraphMeta,
+  useStructuralState,
+} from "@state";
 import { useSelection, useMidi } from "@contexts";
 
 export type GraphEditorProps = Readonly<{
@@ -49,7 +51,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     const scrollRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
     const {
-      graphState: graph,
+      store,
       moveNode,
       deleteNode,
       patchNode,
@@ -58,9 +60,12 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       setZOrder,
       startBatch,
       endBatch,
-      uiState,
-      setViewportState,
-    } = useGraphDoc();
+    } = useGraphStore();
+
+    const { uiState, setViewportState } = useGraphMeta();
+
+    // Structural state — rerenders on node add/remove, connections, positions, z-order
+    const structural = useStructuralState();
 
     const [status, setStatus] = useState<string | null>(null);
 
@@ -81,6 +86,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     const handleConnect = useCallback(
       (from: ConnectionEndpoint, to: ConnectionEndpoint) => {
+        const graph = store.getFullGraphSnapshot();
         if (!graph) return;
 
         const res = canConnect(graph, from, to);
@@ -105,7 +111,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
         setStatus(`Connected ${res.kind}`);
       },
-      [graph, addConnection]
+      [store, addConnection]
     );
 
     const { drag, setDrag } = useDragInteraction({
@@ -140,7 +146,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         const viewportWidth = root.clientWidth;
         const viewportHeight = root.clientHeight;
 
-        // Store center of viewport in world coordinates
         const centerX = root.scrollLeft + viewportWidth / 2;
         const centerY = root.scrollTop + viewportHeight / 2;
 
@@ -154,7 +159,12 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     // Restore viewport position on initial load
     const hasRestoredViewport = useRef(false);
     useEffect(() => {
-      if (hasRestoredViewport.current || !graph || !rootRef.current) return;
+      if (
+        hasRestoredViewport.current ||
+        !store.isInitialized() ||
+        !rootRef.current
+      )
+        return;
 
       const viewport = uiState.viewport;
       if (!viewport) {
@@ -166,7 +176,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       const viewportWidth = rootRef.current.clientWidth;
       const viewportHeight = rootRef.current.clientHeight;
 
-      // Convert center coordinates back to scroll position
       const scrollX = centerX - viewportWidth / 2;
       const scrollY = centerY - viewportHeight / 2;
 
@@ -174,7 +183,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       rootRef.current.scrollTop = Math.max(0, scrollY);
 
       hasRestoredViewport.current = true;
-    }, [graph, uiState.viewport]);
+    }, [structural, uiState.viewport, store]);
 
     // Imperative handle for parent
     useImperativeHandle(
@@ -192,49 +201,35 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       return () => window.clearTimeout(t);
     }, [status]);
 
-    // Sync graph with audio engine
-    useEffect(() => {
-      if (audioState === "off" || !graph) return;
-      getAudioEngine().syncGraph(graph);
-    }, [graph, audioState]);
-
-    // Build render cache
+    // Build connection render cache from structural state
     const renderCache = useMemo(() => {
-      if (!graph)
-        return {
-          nodes: [],
-          connections: [],
-          connectedPortsByNode: new Map<string, Set<string>>(),
-        };
+      const { connections, nodeIds } = structural;
 
       // Compute connected ports per node
       const connectedPortsByNode = new Map<string, Set<string>>();
-      for (const conn of graph.connections) {
-        // Add the output port for the source node
+      for (const conn of connections) {
         if (!connectedPortsByNode.has(conn.from.nodeId)) {
           connectedPortsByNode.set(conn.from.nodeId, new Set());
         }
         connectedPortsByNode.get(conn.from.nodeId)!.add(conn.from.portId);
 
-        // Add the input port for the destination node
         if (!connectedPortsByNode.has(conn.to.nodeId)) {
           connectedPortsByNode.set(conn.to.nodeId, new Set());
         }
         connectedPortsByNode.get(conn.to.nodeId)!.add(conn.to.portId);
       }
 
-      const nodes = graph.nodes.map((node) => {
-        const def = getNodeDef(node.type);
-        const ports = portMetaForNode(node);
-        const portIndex = new Map<string, number>();
-        for (let i = 0; i < ports.length; i++) portIndex.set(ports[i]!.id, i);
-        const height = nodeHeight(ports.length);
-        const Ui = (def as any).ui as any;
-        return { node, def, ports, portIndex, height, Ui };
-      });
-
-      const nodeById = new Map<string, (typeof nodes)[number]>();
-      for (const n of nodes) nodeById.set(n.node.id, n);
+      // Build node info needed for connection path calculation
+      const nodeById = new Map<
+        string,
+        { node: GraphNode; ports: ReturnType<typeof portMetaForNode> }
+      >();
+      for (const nodeId of nodeIds) {
+        const node = store.getNode(nodeId);
+        if (node) {
+          nodeById.set(nodeId, { node, ports: portMetaForNode(node) });
+        }
+      }
 
       const portCenter = (
         node: GraphNode,
@@ -253,21 +248,27 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         return { x, y };
       };
 
-      const connections = graph.connections
+      const connectionPaths = connections
         .map((c) => {
-          const fromNode = nodeById.get(c.from.nodeId);
-          const toNode = nodeById.get(c.to.nodeId);
-          if (!fromNode || !toNode) return null;
+          const fromEntry = nodeById.get(c.from.nodeId);
+          const toEntry = nodeById.get(c.to.nodeId);
+          if (!fromEntry || !toEntry) return null;
 
-          const fromPort = fromNode.ports.find((p) => p.id === c.from.portId);
-          const toPort = toNode.ports.find((p) => p.id === c.to.portId);
+          const fromPort = fromEntry.ports.find(
+            (p) => p.id === c.from.portId
+          );
+          const toPort = toEntry.ports.find((p) => p.id === c.to.portId);
           if (!fromPort || !toPort) return null;
 
-          const fromColIdx = portColumnIndex(fromNode.ports, c.from.portId);
-          const toColIdx = portColumnIndex(toNode.ports, c.to.portId);
+          const fromColIdx = portColumnIndex(fromEntry.ports, c.from.portId);
+          const toColIdx = portColumnIndex(toEntry.ports, c.to.portId);
 
-          const fp1 = portCenter(fromNode.node, fromPort as any, fromColIdx);
-          const fp2 = portCenter(toNode.node, toPort as any, toColIdx);
+          const fp1 = portCenter(
+            fromEntry.node,
+            fromPort as any,
+            fromColIdx
+          );
+          const fp2 = portCenter(toEntry.node, toPort as any, toColIdx);
           return {
             connection: c,
             d: bezierPath(fp1.x, fp1.y, fp2.x, fp2.y),
@@ -275,23 +276,27 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         })
         .filter((v): v is NonNullable<typeof v> => v != null);
 
-      return { nodes, connections, connectedPortsByNode };
-    }, [graph, nodeWidths]);
+      return { connectionPaths, connectedPortsByNode };
+    }, [structural, nodeWidths, store]);
 
     const worldSize = useMemo(() => {
-      if (!graph) return { width: 2400, height: 1600 };
+      const { nodeIds } = structural;
+      if (nodeIds.length === 0) return { width: 2400, height: 1600 };
 
       let maxX = 0;
       let maxY = 0;
-      for (const n of graph.nodes) {
-        maxX = Math.max(maxX, n.x + (nodeWidths[n.id] ?? 240));
-        maxY = Math.max(maxY, n.y);
+      for (const nodeId of nodeIds) {
+        const node = store.getNode(nodeId);
+        if (node) {
+          maxX = Math.max(maxX, node.x + (nodeWidths[node.id] ?? 240));
+          maxY = Math.max(maxY, node.y);
+        }
       }
       return {
         width: Math.max(2400, Math.ceil(maxX + 1200)),
         height: Math.max(1600, Math.ceil(maxY + 1200)),
       };
-    }, [graph, nodeWidths]);
+    }, [structural, nodeWidths, store]);
 
     const handlePatchNode = useCallback(
       (nodeId: string, patch: Partial<any>) => {
@@ -325,7 +330,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     const handleSelectNode = useCallback(
       (nodeId: string) => {
-        // Don't change selection if the node is already part of the current selection
         const isAlreadySelected =
           selected.type === "nodes" && selected.nodeIds.has(nodeId);
 
@@ -333,23 +337,18 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           selectNodes(nodeId);
         }
 
-        if (!graph) return;
-
-        const currentZ = graph.nodeZOrder ?? {};
+        const currentZ = structural.nodeZOrder;
         const zValues = Object.values(currentZ);
         const maxZ = zValues.length > 0 ? Math.max(...zValues) : 0;
         const nodeZ = currentZ[nodeId];
 
-        // Skip if node is already on top
         if (nodeZ !== undefined && nodeZ === maxZ) {
           return;
         }
 
-        // Calculate new z-index
         let newZ = maxZ + 1;
 
-        // Normalize if z-indices are getting too large
-        if (maxZ > graph.nodes.length * 2) {
+        if (maxZ > structural.nodeIds.length * 2) {
           const sorted = Object.entries(currentZ)
             .filter(([id]) => id !== nodeId)
             .sort((a, b) => a[1] - b[1]);
@@ -358,7 +357,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
         setZOrder(nodeId, newZ);
       },
-      [graph, selected, setZOrder, selectNodes]
+      [structural, selected, setZOrder, selectNodes]
     );
 
     const handleSelectConnection = useCallback(
@@ -374,8 +373,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
     const handleStartNodeDrag = useCallback(
       (nodeId: string, pointerX: number, pointerY: number) => {
-        if (!graph) return;
-
         // If clicked node is part of selection, drag all selected nodes
         // Otherwise just drag the clicked node
         const nodesToDrag =
@@ -389,7 +386,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           { offsetX: number; offsetY: number }
         >();
         for (const id of nodesToDrag) {
-          const node = graph.nodes.find((n) => n.id === id);
+          const node = store.getNode(id);
           if (node) {
             nodeOffsets.set(id, {
               offsetX: pointerX - node.x,
@@ -400,7 +397,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
         setDrag({ type: "moveNodes", nodeOffsets });
       },
-      [graph, selected, setDrag]
+      [store, selected, setDrag]
     );
 
     const handleStartConnectionDrag = useCallback(
@@ -417,14 +414,12 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     // Marquee selection handlers
     const handleWorldPointerDown = useCallback(
       (e: React.PointerEvent) => {
-        // Only start marquee on left mouse button, directly on the world/canvas
         if (e.button !== 0) return;
         if (drag.type !== "none") return;
 
         const root = rootRef.current;
         if (!root) return;
 
-        // Get world coordinates
         const local = localPointFromPointerEvent(root, e);
         const world = viewToWorld(
           local,
@@ -471,7 +466,6 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
     const handleWorldPointerUp = useCallback(
       (e: React.PointerEvent) => {
         if (drag.type !== "marquee") return;
-        if (!graph) return;
 
         const root = rootRef.current;
         if (!root) return;
@@ -483,20 +477,20 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           scrollRef.current.y
         );
 
-        // Calculate marquee bounds
         const minX = Math.min(drag.startX, world.x);
         const maxX = Math.max(drag.startX, world.x);
         const minY = Math.min(drag.startY, world.y);
         const maxY = Math.max(drag.startY, world.y);
 
-        // Find nodes within the marquee
         const selectedNodeIds = new Set<string>();
-        for (const node of graph.nodes) {
-          const nodeWidth = nodeWidths[node.id] ?? 240;
-          const nodeH =
-            renderCache.nodes.find((n) => n.node.id === node.id)?.height ?? 200;
+        for (const nodeId of structural.nodeIds) {
+          const node = store.getNode(nodeId);
+          if (!node) continue;
 
-          // Check if node intersects with marquee
+          const nodeWidth = nodeWidths[node.id] ?? 240;
+          const ports = portMetaForNode(node);
+          const nodeH = nodeHeight(ports.length);
+
           const nodeRight = node.x + nodeWidth;
           const nodeBottom = node.y + nodeH;
 
@@ -513,7 +507,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         selectNodes(selectedNodeIds);
         setDrag({ type: "none" });
       },
-      [drag, graph, nodeWidths, renderCache.nodes, selectNodes, setDrag]
+      [drag, structural, store, nodeWidths, selectNodes, setDrag]
     );
 
     // Compute marquee rectangle for rendering
@@ -526,7 +520,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       return { x, y, width, height };
     }, [drag]);
 
-    if (!graph) {
+    if (!store.isInitialized()) {
       return <div className={styles.root}>Loading...</div>;
     }
 
@@ -546,7 +540,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
           onPointerUp={handleWorldPointerUp}
         >
           <svg className={styles.canvas}>
-            {renderCache.connections.map(({ connection, d }) => (
+            {renderCache.connectionPaths.map(({ connection, d }) => (
               <GraphConnectionPath
                 key={connection.id}
                 connection={connection}
@@ -562,47 +556,36 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
 
             <DragConnectionPreview
               drag={drag}
-              graph={graph}
+              getNode={(nodeId) => store.getNode(nodeId)}
               nodeWidths={nodeWidths}
             />
           </svg>
 
           <div className={styles.nodesLayer}>
             <div className={styles.nodesLayerInner}>
-              {renderCache.nodes.map(({ node, def: { title }, ports, Ui }) => {
-                const midiVisible =
-                  node.type === "midiSource" && !!node.state.isEmitting;
-
-                return (
-                  <GraphNodeCard
-                    key={node.id}
-                    node={node}
-                    title={title}
-                    ports={ports}
-                    isSelected={
-                      selected.type === "nodes" && selected.nodeIds.has(node.id)
-                    }
-                    zIndex={graph.nodeZOrder?.[node.id] ?? 0}
-                    audioState={audioState}
-                    midiVisible={midiVisible}
-                    connectedPorts={renderCache.connectedPortsByNode.get(
-                      node.id
-                    )}
-                    Ui={Ui}
-                    rootRef={rootRef}
-                    scrollRef={scrollRef}
-                    onRegisterNodeEl={registerNodeEl}
-                    onSelectNode={handleSelectNode}
-                    onStartNodeDrag={handleStartNodeDrag}
-                    onStartConnectionDrag={handleStartConnectionDrag}
-                    onEndDrag={handleEndDrag}
-                    onPatchNode={handlePatchNode}
-                    onEmitMidi={emitMidi}
-                    startBatch={startBatch}
-                    endBatch={endBatch}
-                  />
-                );
-              })}
+              {structural.nodeIds.map((nodeId) => (
+                <GraphNodeCardContainer
+                  key={nodeId}
+                  nodeId={nodeId}
+                  isSelected={
+                    selected.type === "nodes" && selected.nodeIds.has(nodeId)
+                  }
+                  zIndex={structural.nodeZOrder[nodeId] ?? 0}
+                  audioState={audioState}
+                  connectedPorts={renderCache.connectedPortsByNode.get(nodeId)}
+                  rootRef={rootRef}
+                  scrollRef={scrollRef}
+                  onRegisterNodeEl={registerNodeEl}
+                  onSelectNode={handleSelectNode}
+                  onStartNodeDrag={handleStartNodeDrag}
+                  onStartConnectionDrag={handleStartConnectionDrag}
+                  onEndDrag={handleEndDrag}
+                  onPatchNode={handlePatchNode}
+                  onEmitMidi={emitMidi}
+                  startBatch={startBatch}
+                  endBatch={endBatch}
+                />
+              ))}
             </div>
           </div>
 

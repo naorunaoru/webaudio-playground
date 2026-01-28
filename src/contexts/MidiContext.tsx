@@ -11,6 +11,7 @@ import type { GraphState, MidiEvent, NodeId } from "@graph/types";
 import { getAudioEngine, type MidiDispatchEvent } from "@audio/engine";
 import { computeMidiPatches } from "@graph/midiRouting";
 import { NODE_MODULES } from "@nodes";
+import type { GraphStore } from "@state/GraphStore";
 
 type MidiQueueItem = {
   graph: GraphState;
@@ -38,26 +39,24 @@ type MidiContextValue = {
 const MidiContext = createContext<MidiContextValue | null>(null);
 
 type MidiProviderProps = {
-  graph: GraphState;
+  store: GraphStore;
   onEnsureAudioRunning?: () => Promise<void>;
   onPatchNodesEphemeral?: (patches: Map<NodeId, Record<string, unknown>>) => void;
   children: ReactNode;
 };
 
 export function MidiProvider({
-  graph,
+  store,
   onEnsureAudioRunning,
   onPatchNodesEphemeral,
   children,
 }: MidiProviderProps) {
   const pendingMidiDispatchQueueRef = useRef<MidiQueueItem[]>([]);
   const drainingMidiDispatchQueueRef = useRef(false);
-  const graphRef = useRef(graph);
   const onEnsureAudioRunningRef = useRef(onEnsureAudioRunning);
   const onPatchNodesEphemeralRef = useRef(onPatchNodesEphemeral);
 
   // Keep refs up to date
-  graphRef.current = graph;
   onEnsureAudioRunningRef.current = onEnsureAudioRunning;
   onPatchNodesEphemeralRef.current = onPatchNodesEphemeral;
 
@@ -93,7 +92,8 @@ export function MidiProvider({
   const emitMidi = useCallback(
     (nodeId: NodeId, event: MidiEvent): Promise<void> => {
       return new Promise<void>((resolve, reject) => {
-        const currentGraph = graphRef.current;
+        const currentGraph = store.getFullGraphSnapshot();
+        if (!currentGraph) return resolve();
         const patches = computeMidiPatches(currentGraph, nodeId, event);
 
         // Persist CC-derived state changes without creating history entries.
@@ -113,21 +113,21 @@ export function MidiProvider({
         drainQueue();
       });
     },
-    [drainQueue]
+    [drainQueue, store]
   );
 
   const sendMidiToNode = useCallback(
     async (nodeId: NodeId, event: MidiEvent): Promise<void> => {
-      const currentGraph = graphRef.current;
+      const currentGraph = store.getFullGraphSnapshot();
+      if (!currentGraph) return;
       await onEnsureAudioRunningRef.current?.();
       getAudioEngine().dispatchMidiDirect(currentGraph, nodeId, event);
     },
-    []
+    [store]
   );
 
   const isMidiSource = useCallback((nodeId: NodeId): boolean => {
-    const currentGraph = graphRef.current;
-    const node = currentGraph.nodes.find((n) => n.id === nodeId);
+    const node = store.getNode(nodeId);
     if (!node) return false;
 
     const mod = NODE_MODULES[node.type as keyof typeof NODE_MODULES];
@@ -137,7 +137,7 @@ export function MidiProvider({
     return ports.some(
       (p) => p.kind === "midi" && p.direction === "out"
     );
-  }, []);
+  }, [store]);
 
   const dispatchMidiToNode = useCallback(
     async (nodeId: NodeId, event: MidiEvent): Promise<void> => {
