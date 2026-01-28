@@ -104,6 +104,7 @@ class VcoProcessor extends AudioWorkletProcessor {
     _parameters: Record<string, Float32Array>
   ): boolean {
     const pitchInput = inputs[0]; // V/oct pitch CV input
+    const phaseModInput = inputs[1]; // Phase modulation CV input
     const audioOutput = outputs[0]; // Audio output
 
     if (!audioOutput || audioOutput.length === 0) return true;
@@ -113,6 +114,7 @@ class VcoProcessor extends AudioWorkletProcessor {
 
     const outputChannels = audioOutput.length;
     const inputChannels = pitchInput?.length ?? 0;
+    const phaseModChannels = phaseModInput?.length ?? 0;
     const invSampleRate = 1 / sampleRate;
 
     // Process each output channel
@@ -127,6 +129,7 @@ class VcoProcessor extends AudioWorkletProcessor {
       }
 
       const pitchCv = pitchInput![ch]!;
+      const phaseModCv = ch < phaseModChannels ? phaseModInput![ch] : null;
 
       for (let i = 0; i < frames; i++) {
         // Get pitch CV for this sample (V/oct)
@@ -140,10 +143,16 @@ class VcoProcessor extends AudioWorkletProcessor {
 
         const freq = this.vOctToHz(vOct);
 
-        // Generate sample at current phase
-        output[i] = this.generateSample(this.phases[ch] ?? 0);
+        // Get phase modulation offset (0 if not connected)
+        // Phase mod input is expected in range [-1, 1] which maps to [-1, 1] phase offset
+        const phaseMod = phaseModCv?.[i] ?? 0;
 
-        // Advance phase
+        // Generate sample at current phase + modulation offset
+        // Use modulo to wrap phase into [0, 1) range
+        const modulatedPhase = (((this.phases[ch] ?? 0) + phaseMod) % 1 + 1) % 1;
+        output[i] = this.generateSample(modulatedPhase);
+
+        // Advance phase (base phase accumulator is unaffected by modulation)
         const phaseIncrement = freq * invSampleRate;
         this.phases[ch] = ((this.phases[ch] ?? 0) + phaseIncrement) % 1;
       }

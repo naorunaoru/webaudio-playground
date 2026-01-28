@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { GraphNode } from "@graph/types";
 import { useRuntimeStateGetter } from "@graph/hooks";
 import type {
@@ -11,6 +12,7 @@ import { NumericInput } from "@ui/components/NumericInput";
 import { ThemeProvider } from "@ui/context";
 import type { ControlTheme } from "@ui/types/theme";
 import type { EnvelopeRuntimeState } from "./audio";
+import type { EnvelopePhase, EnvelopeState } from "./types";
 
 const envelopeTheme: ControlTheme = {
   primary: "#ec4899", // Pink - envelope/modulation
@@ -34,21 +36,20 @@ function clampShape(v: number): number {
   return Math.max(-1, Math.min(1, v));
 }
 
-function defaultState(): EnvelopeNode["state"] {
-  return {
-    env: {
-      attackMs: 5,
-      decayMs: 120,
-      sustain: 0.6,
-      releaseMs: 120,
-      attackShape: 0.6,
-      decayShape: 0.6,
-      releaseShape: 0.6,
-      retrigger: true,
-    },
-  };
+function defaultPhases(): EnvelopePhase[] {
+  return [
+    { id: "a", targetLevel: 1.0, durationMs: 5, shape: 0.6, hold: false },
+    { id: "d", targetLevel: 0.6, durationMs: 120, shape: 0.6, hold: true },
+    { id: "r", targetLevel: 0.0, durationMs: 120, shape: 0.6, hold: false },
+  ];
 }
 
+function defaultState(): EnvelopeState {
+  return {
+    phases: defaultPhases(),
+    retrigger: true,
+  };
+}
 
 const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
   node,
@@ -57,18 +58,88 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
   endBatch,
 }) => {
   const getRuntimeState = useRuntimeStateGetter<EnvelopeRuntimeState>(node.id);
-  const env = node.state.env;
+  const { phases, retrigger } = node.state;
+  const [selectedPhase, setSelectedPhase] = useState<number | null>(null);
+
+  const selectedPhaseData = selectedPhase !== null ? phases[selectedPhase] : null;
+
+  const updatePhases = (next: EnvelopePhase[]) => {
+    // Deep clone to strip any Automerge proxy references
+    const plainPhases = JSON.parse(JSON.stringify(next));
+    onPatchNode(node.id, { phases: plainPhases });
+  };
+
+  const updateSelectedPhase = (updates: Partial<EnvelopePhase>) => {
+    if (selectedPhase === null) return;
+    const newPhases = phases.map((p, i) =>
+      i === selectedPhase ? { ...p, ...updates } : p
+    );
+    updatePhases(newPhases);
+  };
 
   return (
     <ThemeProvider theme={envelopeTheme}>
       <div style={{ display: "grid", gap: 16 }}>
         <EnvelopeEditor
-          env={env}
-          onChangeEnv={(next) => onPatchNode(node.id, { env: next })}
+          phases={phases}
+          onChangePhases={updatePhases}
           getRuntimeState={getRuntimeState}
           onDragStart={startBatch}
           onDragEnd={endBatch}
+          selectedPhase={selectedPhase}
+          onSelectPhase={setSelectedPhase}
         />
+
+        {/* Phase parameter inputs - always visible, disabled when no phase selected */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            justifyContent: "center",
+            alignItems: "flex-end",
+          }}
+        >
+          <NumericInput
+            value={selectedPhaseData?.durationMs ?? 0}
+            onChange={(v) => updateSelectedPhase({ durationMs: clampMs(v) })}
+            min={0}
+            max={5000}
+            step={1}
+            label="Time"
+            format={(v) => selectedPhaseData ? Math.round(v).toString() : "—"}
+            unit="ms"
+            width={56}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
+            disabled={!selectedPhaseData}
+          />
+          <NumericInput
+            value={selectedPhaseData?.targetLevel ?? 0}
+            onChange={(v) => updateSelectedPhase({ targetLevel: clamp01(v) })}
+            min={0}
+            max={1}
+            step={0.01}
+            label="Level"
+            format={(v) => selectedPhaseData ? v.toFixed(2) : "—"}
+            width={56}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
+            disabled={!selectedPhaseData}
+          />
+          <NumericInput
+            value={selectedPhaseData?.shape ?? 0}
+            onChange={(v) => updateSelectedPhase({ shape: clampShape(v) })}
+            min={-1}
+            max={1}
+            step={0.01}
+            label="Curve"
+            format={(v) => selectedPhaseData ? v.toFixed(2) : "—"}
+            width={56}
+            onDragStart={startBatch}
+            onDragEnd={endBatch}
+            disabled={!selectedPhaseData}
+          />
+        </div>
 
         <div
           style={{
@@ -86,81 +157,37 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
             }}
           >
             <Button
-              aria-pressed={env.retrigger}
+              aria-pressed={retrigger}
               onClick={() =>
-                onPatchNode(node.id, {
-                  env: { ...env, retrigger: !env.retrigger },
-                })
+                onPatchNode(node.id, { retrigger: !retrigger })
               }
             >
-              {env.retrigger ? "On" : "Off"}
+              {retrigger ? "On" : "Off"}
             </Button>
             <Label text="Retrig" />
           </div>
-          <NumericInput
-            value={env.attackMs}
-            onChange={(v) =>
-              onPatchNode(node.id, { env: { ...env, attackMs: clampMs(v) } })
-            }
-            min={0}
-            max={5000}
-            step={1}
-            label="A"
-            format={(v) => Math.round(v).toString()}
-            unit="ms"
-            width={56}
-            onDragStart={startBatch}
-            onDragEnd={endBatch}
-          />
-          <NumericInput
-            value={env.decayMs}
-            onChange={(v) =>
-              onPatchNode(node.id, { env: { ...env, decayMs: clampMs(v) } })
-            }
-            min={0}
-            max={5000}
-            step={1}
-            label="D"
-            format={(v) => Math.round(v).toString()}
-            unit="ms"
-            width={56}
-            onDragStart={startBatch}
-            onDragEnd={endBatch}
-          />
-          <NumericInput
-            value={env.sustain}
-            onChange={(v) =>
-              onPatchNode(node.id, { env: { ...env, sustain: clamp01(v) } })
-            }
-            min={0}
-            max={1}
-            step={0.01}
-            label="S"
-            format={(v) => v.toFixed(2)}
-            width={56}
-            onDragStart={startBatch}
-            onDragEnd={endBatch}
-          />
-          <NumericInput
-            value={env.releaseMs}
-            onChange={(v) =>
-              onPatchNode(node.id, { env: { ...env, releaseMs: clampMs(v) } })
-            }
-            min={0}
-            max={5000}
-            step={1}
-            label="R"
-            format={(v) => Math.round(v).toString()}
-            unit="ms"
-            width={56}
-            onDragStart={startBatch}
-            onDragEnd={endBatch}
-          />
         </div>
       </div>
     </ThemeProvider>
   );
 };
+
+function isValidPhase(p: unknown): p is EnvelopePhase {
+  if (typeof p !== "object" || p === null) return false;
+  const obj = p as Record<string, unknown>;
+  return (
+    typeof obj.id === "string" &&
+    typeof obj.targetLevel === "number" &&
+    typeof obj.durationMs === "number" &&
+    typeof obj.shape === "number" &&
+    typeof obj.hold === "boolean"
+  );
+}
+
+function isValidPhasesArray(arr: unknown): arr is EnvelopePhase[] {
+  if (!Array.isArray(arr)) return false;
+  return arr.length > 0 && arr.every(isValidPhase);
+}
 
 export const envelopeGraph: NodeDefinition<EnvelopeNode> = {
   type: "envelope",
@@ -172,29 +199,17 @@ export const envelopeGraph: NodeDefinition<EnvelopeNode> = {
   ],
   ui: EnvelopeUi,
   normalizeState: (state) => {
-    const s = (state ?? {}) as Partial<EnvelopeNode["state"]> & { env?: any };
-    const d = defaultState();
-    const env = s.env ?? {};
-    const curveToShape = (curve: unknown) => (curve === "exp" ? 0.6 : 0);
-    return {
-      env: {
-        attackMs: env.attackMs ?? d.env.attackMs,
-        decayMs: env.decayMs ?? d.env.decayMs,
-        sustain: env.sustain ?? d.env.sustain,
-        releaseMs: env.releaseMs ?? d.env.releaseMs,
-        attackShape: clampShape(
-          env.attackShape ?? curveToShape(env.attackCurve) ?? d.env.attackShape
-        ),
-        decayShape: clampShape(
-          env.decayShape ?? curveToShape(env.decayCurve) ?? d.env.decayShape
-        ),
-        releaseShape: clampShape(
-          env.releaseShape ??
-            curveToShape(env.releaseCurve) ??
-            d.env.releaseShape
-        ),
-        retrigger: env.retrigger ?? d.env.retrigger,
-      },
-    };
+    const s = (state ?? {}) as Partial<EnvelopeState>;
+
+    // If valid phases array exists, use it
+    if (isValidPhasesArray(s.phases)) {
+      return {
+        phases: s.phases,
+        retrigger: typeof s.retrigger === "boolean" ? s.retrigger : true,
+      };
+    }
+
+    // Otherwise return default state (no migration from old format)
+    return defaultState();
   },
 };

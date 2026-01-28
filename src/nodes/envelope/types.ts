@@ -1,20 +1,14 @@
-export type EnvelopeEnv = {
-  attackMs: number;
-  decayMs: number;
-  sustain: number; // 0..1
-  releaseMs: number;
-  /** Curve shape in range [-1..1]. 0 = linear. Positive = more exponential-like. */
-  attackShape: number;
-  /** Curve shape in range [-1..1]. 0 = linear. Positive = more exponential-like. */
-  decayShape: number;
-  /** Curve shape in range [-1..1]. 0 = linear. Positive = more exponential-like. */
-  releaseShape: number;
-  /** If true, envelope resets to 0 on each note trigger. If false (default), continues from current level. */
-  retrigger: boolean;
+export type EnvelopePhase = {
+  id: string;
+  targetLevel: number;  // 0-1, level to reach at end of this phase
+  durationMs: number;   // Time to reach target level
+  shape: number;        // -1 to 1, curve shape
+  hold: boolean;        // If true, hold at targetLevel until gate-off
 };
 
 export type EnvelopeState = {
-  env: EnvelopeEnv;
+  phases: EnvelopePhase[];
+  retrigger: boolean;
 };
 
 declare module "../../graph/types" {

@@ -1,12 +1,8 @@
 import type { GraphNode, GraphState, NodeId, VoiceEvent } from "@graph/types";
 import type { AudioNodeFactory, AudioNodeInstance } from "@/types/audioRuntime";
 import type { AudioNodeServices } from "@/types/nodeModule";
-import {
-  shapedT,
-  getPhaseAtTime,
-  type EnvelopePhase,
-  type EnvelopeTiming,
-} from "@utils/envelope";
+import type { EnvelopePhase } from "./types";
+import { shapedT } from "@utils/envelope";
 import { clamp01 } from "@utils/math";
 import { findAllocator, type AllocatorLookupResult } from "@audio/allocatorDiscovery";
 import envelopeProcessorUrl from "./processor.ts?worklet";
@@ -20,42 +16,57 @@ const MAX_VOICES = 32;
 /** Runtime state for a single voice's envelope. */
 export type VoiceRuntimeState = {
   voiceIndex: number;
+  phaseIndex: number;      // -1 = idle
+  phaseProgress: number;   // 0-1 within current phase
   currentLevel: number;
-  phase: EnvelopePhase;
-  phaseProgress: number;
 };
 
 export type EnvelopeRuntimeState = {
-  /** All active voices (non-idle). */
   voices: VoiceRuntimeState[];
-  /** Legacy: state for voice 0 (for backwards compatibility). */
-  currentLevel: number;
-  phase: EnvelopePhase;
-  phaseProgress: number;
 };
 
 type VoiceState = {
   gateOn: boolean;
-  noteOnAtSec: number | null;
-  noteOnStartLevel: number;
-  noteOnPeak: number;
-  noteOnSustainLevel: number;
-  releaseStartAtSec: number | null;
-  releaseStartLevel: number;
-  releaseDurationSec: number;
+  phaseIndex: number;           // Current phase index, -1 = idle
+  phaseStartAtSec: number | null;
+  phaseDurationSec: number;
+  phaseStartLevel: number;
+  phaseTargetLevel: number;
+  phaseShape: number;
+  isHolding: boolean;
 };
 
 function createVoiceState(): VoiceState {
   return {
     gateOn: false,
-    noteOnAtSec: null,
-    noteOnStartLevel: 0,
-    noteOnPeak: 0,
-    noteOnSustainLevel: 0,
-    releaseStartAtSec: null,
-    releaseStartLevel: 0,
-    releaseDurationSec: 0,
+    phaseIndex: -1,
+    phaseStartAtSec: null,
+    phaseDurationSec: 0,
+    phaseStartLevel: 0,
+    phaseTargetLevel: 0,
+    phaseShape: 0,
+    isHolding: false,
   };
+}
+
+/**
+ * Compute the index of the first "release" phase.
+ */
+function computeReleasePhaseIndex(phases: EnvelopePhase[]): number {
+  if (phases.length === 0) return 0;
+
+  let lastHoldIndex = -1;
+  for (let i = 0; i < phases.length - 1; i++) {
+    if (phases[i]!.hold) {
+      lastHoldIndex = i;
+    }
+  }
+
+  if (lastHoldIndex >= 0) {
+    return lastHoldIndex + 1;
+  }
+
+  return phases.length - 1;
 }
 
 const workletModuleLoadByContext = new WeakMap<AudioContext, Promise<void>>();
@@ -88,6 +99,11 @@ function createEnvelopeRuntime(
     voiceStates.push(createVoiceState());
   }
 
+  // Cached state
+  let cachedPhases: EnvelopePhase[] = [];
+  let cachedRetrigger = false;
+  let releasePhaseIndex = 0;
+
   // ChannelSplitter to split N-channel worklet output into N mono outputs
   const outputSplitter = ctx.createChannelSplitter(MAX_VOICES);
 
@@ -101,12 +117,11 @@ function createEnvelopeRuntime(
 
   // Connect splitter outputs to individual output gains
   for (let i = 0; i < MAX_VOICES; i++) {
-    outputSplitter.connect(envOutputs[i], i);
+    outputSplitter.connect(envOutputs[i]!, i);
   }
 
   let worklet: AudioWorkletNode | null = null;
   let workletReady = false;
-  let cachedEnv: EnvelopeNodeState["env"] | null = null;
 
   // Queue for events that arrive before worklet is ready
   type PendingEvent = { portId: string; event: VoiceEvent };
@@ -136,18 +151,12 @@ function createEnvelopeRuntime(
       };
 
       // Send initial params
-      if (cachedEnv) {
+      if (cachedPhases.length > 0) {
         worklet.port.postMessage({
           type: "params",
           params: {
-            attackMs: cachedEnv.attackMs,
-            decayMs: cachedEnv.decayMs,
-            sustain: cachedEnv.sustain,
-            releaseMs: cachedEnv.releaseMs,
-            attackShape: cachedEnv.attackShape,
-            decayShape: cachedEnv.decayShape,
-            releaseShape: cachedEnv.releaseShape,
-            retrigger: cachedEnv.retrigger,
+            phases: cachedPhases,
+            retrigger: cachedRetrigger,
           },
         });
       }
@@ -205,182 +214,210 @@ function createEnvelopeRuntime(
     voiceToSource.clear();
   }
 
-  function levelAtElapsedSec(
-    voiceIdx: number,
-    elapsedSec: number,
-    env: EnvelopeNodeState["env"]
-  ): number {
-    const voice = voiceStates[voiceIdx];
-    const a = Math.max(0, env.attackMs) / 1000;
-    const d = Math.max(0, env.decayMs) / 1000;
+  function startPhaseForVoice(voiceIdx: number, phaseIndex: number, startLevel: number) {
+    const voice = voiceStates[voiceIdx]!;
+    const phases = cachedPhases;
 
-    if (elapsedSec <= 0) return voice.noteOnStartLevel;
-    if (a > 0 && elapsedSec < a) {
-      const t = elapsedSec / a;
-      return (
-        voice.noteOnStartLevel +
-        (voice.noteOnPeak - voice.noteOnStartLevel) * shapedT(t, env.attackShape)
-      );
+    if (phaseIndex < 0 || phaseIndex >= phases.length) {
+      voice.phaseIndex = -1;
+      voice.phaseStartAtSec = null;
+      voice.isHolding = false;
+      return;
     }
-    if (d > 0 && elapsedSec < a + d) {
-      const t = (elapsedSec - a) / d;
-      return (
-        voice.noteOnPeak +
-        (voice.noteOnSustainLevel - voice.noteOnPeak) * shapedT(t, env.decayShape)
-      );
-    }
-    return voice.noteOnSustainLevel;
+
+    const phase = phases[phaseIndex]!;
+    voice.phaseIndex = phaseIndex;
+    voice.phaseStartAtSec = ctx.currentTime;
+    voice.phaseDurationSec = Math.max(0.001, phase.durationMs / 1000);
+    voice.phaseStartLevel = startLevel;
+    voice.phaseTargetLevel = clamp01(phase.targetLevel);
+    voice.phaseShape = phase.shape;
+    voice.isHolding = false;
   }
 
-  function applyGateOn(voiceIdx: number, env: EnvelopeNodeState["env"]) {
-    const now = ctx.currentTime;
-    const voice = voiceStates[voiceIdx];
+  function applyGateOn(voiceIdx: number) {
+    const voice = voiceStates[voiceIdx]!;
+    const phases = cachedPhases;
 
-    const peak = 1;
-    const s = clamp01(env.sustain);
-    const sustainLevel = peak * s;
+    if (phases.length === 0) {
+      voice.phaseIndex = -1;
+      voice.gateOn = false;
+      return;
+    }
 
-    voice.noteOnStartLevel = env.retrigger ? 0 : voice.gateOn ? voice.noteOnSustainLevel : 0;
+    const startLevel = cachedRetrigger ? 0 : computeCurrentLevel(voiceIdx);
     voice.gateOn = true;
-    voice.noteOnAtSec = now;
-    voice.noteOnPeak = peak;
-    voice.noteOnSustainLevel = sustainLevel;
-    voice.releaseStartAtSec = null;
+    startPhaseForVoice(voiceIdx, 0, startLevel);
 
     // Send gate event to worklet
     worklet?.port.postMessage({ type: "gate", voice: voiceIdx, state: "on" });
   }
 
-  function applyGateOff(voiceIdx: number, env: EnvelopeNodeState["env"]) {
-    const now = ctx.currentTime;
-    const voice = voiceStates[voiceIdx];
+  function applyGateOff(voiceIdx: number) {
+    const voice = voiceStates[voiceIdx]!;
 
-    if (!voice.gateOn) return;
-
-    const r = Math.max(0, env.releaseMs) / 1000;
-    const startLevel =
-      voice.noteOnAtSec == null
-        ? 0
-        : Math.max(0, levelAtElapsedSec(voiceIdx, now - voice.noteOnAtSec, env));
+    if (!voice.gateOn && voice.phaseIndex < 0) return;
 
     voice.gateOn = false;
-    voice.releaseStartAtSec = now;
-    voice.releaseStartLevel = startLevel;
-    voice.releaseDurationSec = r;
-    voice.noteOnAtSec = null;
+
+    // Jump to release phase if we're before it or holding
+    if (voice.phaseIndex < releasePhaseIndex || voice.isHolding) {
+      const currentLevel = computeCurrentLevel(voiceIdx);
+      startPhaseForVoice(voiceIdx, releasePhaseIndex, currentLevel);
+    }
 
     // Send gate event to worklet
     worklet?.port.postMessage({ type: "gate", voice: voiceIdx, state: "off" });
   }
 
   function applyForceRelease(voiceIdx: number) {
-    const voice = voiceStates[voiceIdx];
+    const voice = voiceStates[voiceIdx]!;
 
     // Update local state
     voice.gateOn = false;
-    voice.releaseStartAtSec = ctx.currentTime;
-    voice.releaseStartLevel = 0; // Will fast-fade in worklet
-    voice.releaseDurationSec = 0.005; // 5ms fast fade
-    voice.noteOnAtSec = null;
+    voice.phaseIndex = -1;
+    voice.phaseStartAtSec = ctx.currentTime;
+    voice.phaseDurationSec = 0.005; // 5ms fast fade
+    voice.phaseStartLevel = computeCurrentLevel(voiceIdx);
+    voice.phaseTargetLevel = 0;
+    voice.phaseShape = 0;
+    voice.isHolding = false;
 
     // Send force release to worklet (fast fade)
     worklet?.port.postMessage({ type: "forceRelease", voice: voiceIdx });
 
     // Don't call allocator.release() here - the allocator already cleared holds
-    // when it dispatched the force-release event
     voiceToSource.delete(voiceIdx);
   }
 
-  function computeVoiceRuntimeState(
-    voiceIdx: number,
-    now: number,
-    env: EnvelopeNodeState["env"] | null
-  ): VoiceRuntimeState | null {
-    const voice = voiceStates[voiceIdx];
+  function computeCurrentLevel(voiceIdx: number): number {
+    const voice = voiceStates[voiceIdx]!;
+    const now = ctx.currentTime;
 
-    // Skip idle voices
-    if (voice.noteOnAtSec == null && voice.releaseStartAtSec == null) {
+    if (voice.phaseIndex < 0 && voice.phaseStartAtSec == null) {
+      return 0;
+    }
+
+    if (voice.isHolding) {
+      return voice.phaseTargetLevel;
+    }
+
+    if (voice.phaseStartAtSec == null) {
+      return 0;
+    }
+
+    const elapsed = now - voice.phaseStartAtSec;
+    const duration = voice.phaseDurationSec;
+
+    if (elapsed >= duration) {
+      return voice.phaseTargetLevel;
+    }
+
+    const t = clamp01(elapsed / duration);
+    const shaped = shapedT(t, voice.phaseShape);
+    return voice.phaseStartLevel + (voice.phaseTargetLevel - voice.phaseStartLevel) * shaped;
+  }
+
+  function computeVoiceRuntimeState(voiceIdx: number): VoiceRuntimeState | null {
+    const voice = voiceStates[voiceIdx]!;
+    const now = ctx.currentTime;
+
+    // Idle voice
+    if (voice.phaseIndex < 0 && voice.phaseStartAtSec == null) {
       return null;
     }
 
-    const timing: EnvelopeTiming = {
-      attackSec: Math.max(0, env?.attackMs ?? 0) / 1000,
-      decaySec: Math.max(0, env?.decayMs ?? 0) / 1000,
-      releaseSec: voice.releaseDurationSec,
-    };
+    // Force release in progress (phaseIndex = -1 but still fading)
+    if (voice.phaseIndex < 0 && voice.phaseStartAtSec != null) {
+      const elapsed = now - voice.phaseStartAtSec;
+      if (elapsed >= voice.phaseDurationSec) {
+        voice.phaseStartAtSec = null;
+        return null;
+      }
+      const progress = clamp01(elapsed / voice.phaseDurationSec);
+      const level = voice.phaseStartLevel * (1 - progress);
+      return {
+        voiceIndex: voiceIdx,
+        phaseIndex: -1,
+        phaseProgress: progress,
+        currentLevel: Math.max(0, level),
+      };
+    }
 
-    if (voice.releaseStartAtSec != null) {
-      const elapsed = now - voice.releaseStartAtSec;
-      const { phase, progress } = getPhaseAtTime(elapsed, timing, true);
+    // Normal phase progression
+    const phases = cachedPhases;
+    if (voice.phaseIndex >= phases.length) {
+      return null;
+    }
 
-      if (phase === "idle") {
-        voice.releaseStartAtSec = null;
+    if (voice.isHolding) {
+      return {
+        voiceIndex: voiceIdx,
+        phaseIndex: voice.phaseIndex,
+        phaseProgress: 1,
+        currentLevel: voice.phaseTargetLevel,
+      };
+    }
+
+    if (voice.phaseStartAtSec == null) {
+      return null;
+    }
+
+    const elapsed = now - voice.phaseStartAtSec;
+    const duration = voice.phaseDurationSec;
+    const progress = clamp01(elapsed / duration);
+    const level = computeCurrentLevel(voiceIdx);
+
+    // Check if phase is complete and advance (for visualization sync)
+    if (elapsed >= duration) {
+      const currentPhase = phases[voice.phaseIndex];
+      const isLastPhase = voice.phaseIndex >= phases.length - 1;
+
+      if (currentPhase?.hold && !isLastPhase) {
+        voice.isHolding = true;
+        return {
+          voiceIndex: voiceIdx,
+          phaseIndex: voice.phaseIndex,
+          phaseProgress: 1,
+          currentLevel: voice.phaseTargetLevel,
+        };
+      }
+
+      if (isLastPhase) {
+        // Envelope complete
+        voice.phaseIndex = -1;
+        voice.phaseStartAtSec = null;
         return null;
       }
 
-      const level = env
-        ? voice.releaseStartLevel * (1 - shapedT(progress, env.releaseShape))
-        : voice.releaseStartLevel * (1 - progress);
-
-      return {
-        voiceIndex: voiceIdx,
-        currentLevel: Math.max(0, level),
-        phase,
-        phaseProgress: progress,
-      };
+      // Advance to next phase
+      startPhaseForVoice(voiceIdx, voice.phaseIndex + 1, voice.phaseTargetLevel);
+      return computeVoiceRuntimeState(voiceIdx);
     }
 
-    if (voice.noteOnAtSec != null && env) {
-      const elapsed = now - voice.noteOnAtSec;
-      const { phase, progress } = getPhaseAtTime(elapsed, timing, false);
-      const level =
-        phase === "sustain" ? voice.noteOnSustainLevel : levelAtElapsedSec(voiceIdx, elapsed, env);
-      return {
-        voiceIndex: voiceIdx,
-        currentLevel: Math.max(0, level),
-        phase,
-        phaseProgress: progress,
-      };
-    }
-
-    return null;
+    return {
+      voiceIndex: voiceIdx,
+      phaseIndex: voice.phaseIndex,
+      phaseProgress: progress,
+      currentLevel: Math.max(0, level),
+    };
   }
 
   function computeRuntimeState(): EnvelopeRuntimeState {
-    const now = ctx.currentTime;
-    const env = cachedEnv;
-
-    // Collect all active voice states
     const activeVoices: VoiceRuntimeState[] = [];
     for (let i = 0; i < MAX_VOICES; i++) {
-      const voiceState = computeVoiceRuntimeState(i, now, env);
+      const voiceState = computeVoiceRuntimeState(i);
       if (voiceState) {
         activeVoices.push(voiceState);
       }
     }
 
-    // Legacy: return voice 0 state for backwards compatibility
-    const voice0 = activeVoices.find((v) => v.voiceIndex === 0) ?? activeVoices[0];
-    if (voice0) {
-      return {
-        voices: activeVoices,
-        currentLevel: voice0.currentLevel,
-        phase: voice0.phase,
-        phaseProgress: voice0.phaseProgress,
-      };
-    }
-
-    return {
-      voices: [],
-      currentLevel: 0,
-      phase: "idle",
-      phaseProgress: 0,
-    };
+    return { voices: activeVoices };
   }
 
   function processEvent(portId: string, event: VoiceEvent) {
     if (portId !== "gate_in") return;
-    if (!cachedEnv) return;
+    if (cachedPhases.length === 0) return;
 
     const voiceIdx = event.voice;
     if (voiceIdx < 0 || voiceIdx >= MAX_VOICES) return;
@@ -396,9 +433,9 @@ function createEnvelopeRuntime(
             voiceToSource.set(voiceIdx, sourceInfo);
           }
         }
-        applyGateOn(voiceIdx, cachedEnv);
+        applyGateOn(voiceIdx);
       } else {
-        applyGateOff(voiceIdx, cachedEnv);
+        applyGateOff(voiceIdx);
       }
     } else if (event.type === "force-release") {
       applyForceRelease(voiceIdx);
@@ -408,18 +445,15 @@ function createEnvelopeRuntime(
   return {
     type: "envelope",
     updateState: (state) => {
-      cachedEnv = state.env;
+      cachedPhases = state.phases;
+      cachedRetrigger = state.retrigger;
+      releasePhaseIndex = computeReleasePhaseIndex(cachedPhases);
+
       worklet?.port.postMessage({
         type: "params",
         params: {
-          attackMs: state.env.attackMs,
-          decayMs: state.env.decayMs,
-          sustain: state.env.sustain,
-          releaseMs: state.env.releaseMs,
-          attackShape: state.env.attackShape,
-          decayShape: state.env.decayShape,
-          releaseShape: state.env.releaseShape,
-          retrigger: state.env.retrigger,
+          phases: state.phases,
+          retrigger: state.retrigger,
         },
       });
     },
@@ -446,12 +480,14 @@ function createEnvelopeRuntime(
         worklet?.port.postMessage({ type: "releaseAll" });
         // Reset voice states
         for (const voice of voiceStates) {
-          if (voice.gateOn || voice.releaseStartAtSec !== null) {
+          if (voice.gateOn || voice.phaseIndex >= 0) {
             voice.gateOn = false;
-            voice.releaseStartAtSec = ctx.currentTime;
-            voice.releaseStartLevel = 0;
-            voice.releaseDurationSec = 0.005;
-            voice.noteOnAtSec = null;
+            voice.phaseIndex = -1;
+            voice.phaseStartAtSec = ctx.currentTime;
+            voice.phaseDurationSec = 0.005;
+            voice.phaseStartLevel = 0;
+            voice.phaseTargetLevel = 0;
+            voice.isHolding = false;
           }
         }
       }

@@ -1,5 +1,6 @@
-import type { EnvelopeEnv } from "@nodes/envelope/types";
-import type { HandleKey } from "./types";
+import type { EnvelopePhase } from "@nodes/envelope/types";
+import type { HandleIndex } from "./types";
+import type { SegmentPoints } from "./geometry";
 import {
   createCoordinateSystem,
   getEnvelopeSegmentPoints,
@@ -36,17 +37,58 @@ function drawGrid(
 
 function drawCurve(
   ctx: CanvasRenderingContext2D,
-  allPts: Array<{ x: number; y: number }>,
+  segments: SegmentPoints[],
+  phases: EnvelopePhase[],
   dpr: number
 ) {
+  if (segments.length === 0) return;
+
+  // Draw all segments as one continuous path
   ctx.strokeStyle = "rgba(236,239,244,0.9)";
   ctx.lineWidth = 1.75 * dpr;
   ctx.beginPath();
-  ctx.moveTo(allPts[0]!.x, allPts[0]!.y);
-  for (let i = 1; i < allPts.length; i++) {
-    ctx.lineTo(allPts[i]!.x, allPts[i]!.y);
+
+  let started = false;
+  for (const segment of segments) {
+    for (let i = 0; i < segment.points.length; i++) {
+      const pt = segment.points[i]!;
+      if (!started) {
+        ctx.moveTo(pt.x, pt.y);
+        started = true;
+      } else {
+        ctx.lineTo(pt.x, pt.y);
+      }
+    }
   }
   ctx.stroke();
+
+  // Draw hold indicators
+  for (let i = 0; i < segments.length; i++) {
+    const phase = phases[i];
+    if (phase?.hold && i < phases.length - 1) {
+      // Draw a small marker at the end of this segment
+      const lastPt = segments[i]!.points[segments[i]!.points.length - 1]!;
+      drawHoldIndicator(ctx, lastPt.x, lastPt.y, dpr);
+    }
+  }
+}
+
+function drawHoldIndicator(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  dpr: number
+) {
+  const size = 4 * dpr;
+  ctx.fillStyle = "rgba(236,72,153,0.8)";
+  ctx.beginPath();
+  // Draw a small diamond shape
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x, y + size);
+  ctx.lineTo(x - size, y);
+  ctx.closePath();
+  ctx.fill();
 }
 
 function drawPlayhead(
@@ -75,13 +117,23 @@ function drawHandle(
   x: number,
   y: number,
   isActive: boolean,
+  isSelected: boolean,
   dpr: number
 ) {
-  ctx.fillStyle = isActive ? "rgba(255,255,255,0.95)" : "rgba(236,239,244,0.75)";
+  const radius = (isActive || isSelected ? 5 : 4) * dpr;
+
+  if (isSelected) {
+    ctx.fillStyle = "rgba(236,72,153,0.95)";
+  } else if (isActive) {
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+  } else {
+    ctx.fillStyle = "rgba(236,239,244,0.75)";
+  }
+
   ctx.strokeStyle = "rgba(0,0,0,0.35)";
   ctx.lineWidth = 2 * dpr;
   ctx.beginPath();
-  ctx.arc(x, y, (isActive ? 5 : 4) * dpr, 0, Math.PI * 2);
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
 }
@@ -91,35 +143,59 @@ export function drawEnvelope(
   width: number,
   height: number,
   dpr: number,
-  env: EnvelopeEnv,
-  activeHandle: HandleKey | null,
+  phases: EnvelopePhase[],
+  activeHandle: HandleIndex | null,
+  selectedHandle: HandleIndex | null,
   playheads: Playhead[]
 ) {
   ctx.clearRect(0, 0, width, height);
 
-  const coords = createCoordinateSystem(width, height, dpr, env);
+  if (phases.length === 0) return;
+
+  const coords = createCoordinateSystem(width, height, dpr, phases);
   const { pad, w, h, totalMs, xOfMs } = coords;
 
   drawGrid(ctx, pad, w, h, dpr);
 
-  const segments = getEnvelopeSegmentPoints(env, coords);
-  const allPts = [
-    ...segments.attackPts,
-    ...segments.decayPts.slice(1),
-    ...segments.releasePts.slice(1),
-  ];
-  drawCurve(ctx, allPts, dpr);
+  const segments = getEnvelopeSegmentPoints(phases, coords);
+  drawCurve(ctx, segments, phases, dpr);
 
   // Draw all playheads with decreasing opacity for secondary voices
   for (let i = 0; i < playheads.length; i++) {
-    const playhead = playheads[i];
+    const playhead = playheads[i]!;
     // First playhead is full opacity, others fade slightly
     const alpha = i === 0 ? 0.65 : Math.max(0.25, 0.5 - i * 0.05);
     drawPlayhead(ctx, playhead, totalMs, pad, h, xOfMs, dpr, alpha);
   }
 
-  const handles = getHandlePositions(env, coords);
-  drawHandle(ctx, handles.attack.x, handles.attack.y, activeHandle === "a", dpr);
-  drawHandle(ctx, handles.decay.x, handles.decay.y, activeHandle === "d", dpr);
-  drawHandle(ctx, handles.release.x, handles.release.y, activeHandle === "r", dpr);
+  const handles = getHandlePositions(phases, coords);
+  for (let i = 0; i < handles.length; i++) {
+    const handle = handles[i]!;
+    drawHandle(
+      ctx,
+      handle.x,
+      handle.y,
+      activeHandle === i,
+      selectedHandle === i,
+      dpr
+    );
+  }
+}
+
+/**
+ * Compute the level at a given phase index and progress.
+ */
+export function computeLevelAtPhase(
+  phases: EnvelopePhase[],
+  phaseIndex: number,
+  progress: number
+): number {
+  if (phaseIndex < 0 || phases.length === 0) return 0;
+  if (phaseIndex >= phases.length) return phases[phases.length - 1]?.targetLevel ?? 0;
+
+  const phase = phases[phaseIndex]!;
+  const prevLevel = phaseIndex > 0 ? phases[phaseIndex - 1]!.targetLevel : 0;
+
+  // Linear interpolation (actual shaping is in the processor)
+  return prevLevel + (phase.targetLevel - prevLevel) * Math.max(0, Math.min(1, progress));
 }

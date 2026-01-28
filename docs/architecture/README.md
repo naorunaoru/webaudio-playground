@@ -12,3 +12,4 @@ Cross-cutting architectural documentation.
 ## Implementation Plans
 
 - [Voice Allocation](./voice-allocation-implementation.md) — Implementation plan for Consumer Hold model
+- [Multi-Phase Envelope](./multi-phase-envelope.md) — Refactoring Envelope to support arbitrary phase sequences

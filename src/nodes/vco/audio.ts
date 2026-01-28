@@ -38,6 +38,20 @@ function createVcoRuntime(
     pitchInputs[i].connect(pitchMerger, 0, i);
   }
 
+  // Create N GainNodes as phase modulation inputs (one per voice channel)
+  const phaseModInputs: GainNode[] = [];
+  for (let i = 0; i < MAX_VOICES; i++) {
+    const input = ctx.createGain();
+    input.gain.value = 1;
+    phaseModInputs.push(input);
+  }
+
+  // ChannelMerger to combine N mono phase mod inputs into N-channel signal for worklet
+  const phaseModMerger = ctx.createChannelMerger(MAX_VOICES);
+  for (let i = 0; i < MAX_VOICES; i++) {
+    phaseModInputs[i].connect(phaseModMerger, 0, i);
+  }
+
   // ChannelSplitter to split N-channel worklet output into N mono outputs
   const outputSplitter = ctx.createChannelSplitter(MAX_VOICES);
 
@@ -82,7 +96,7 @@ function createVcoRuntime(
       await ensureVcoWorkletModuleLoaded(ctx);
 
       worklet = new AudioWorkletNode(ctx, "vco", {
-        numberOfInputs: 1,
+        numberOfInputs: 2, // pitch CV + phase modulation
         numberOfOutputs: 1,
         outputChannelCount: [MAX_VOICES],
         channelCount: MAX_VOICES,
@@ -94,8 +108,9 @@ function createVcoRuntime(
       worklet.port.postMessage({ type: "params", waveform: currentWaveform });
       worklet.port.postMessage({ type: "setA4", a4Hz: currentA4 });
 
-      // Connect: pitchMerger -> worklet -> outputSplitter
-      pitchMerger.connect(worklet);
+      // Connect: pitchMerger -> worklet input 0, phaseModMerger -> worklet input 1
+      pitchMerger.connect(worklet, 0, 0);
+      phaseModMerger.connect(worklet, 0, 1);
       worklet.connect(outputSplitter);
     } catch (e) {
       console.error("Failed to create VCO worklet:", e);
@@ -106,6 +121,7 @@ function createVcoRuntime(
     if (!worklet) return;
     try {
       pitchMerger.disconnect(worklet);
+      phaseModMerger.disconnect(worklet);
       worklet.disconnect();
     } catch {
       // ignore
@@ -124,6 +140,8 @@ function createVcoRuntime(
     getAudioInputs: (portId) => {
       // Return N GainNodes for the pitch input - one per voice channel
       if (portId === "pitch_in") return pitchInputs;
+      // Return N GainNodes for the phase modulation input - one per voice channel
+      if (portId === "phase_mod_in") return phaseModInputs;
       return [];
     },
     getAudioOutputs: (portId) => {
@@ -148,7 +166,11 @@ function createVcoRuntime(
         meterMixer.disconnect();
         outputSplitter.disconnect();
         pitchMerger.disconnect();
+        phaseModMerger.disconnect();
         for (const input of pitchInputs) {
+          input.disconnect();
+        }
+        for (const input of phaseModInputs) {
           input.disconnect();
         }
         for (const output of audioOutputs) {
