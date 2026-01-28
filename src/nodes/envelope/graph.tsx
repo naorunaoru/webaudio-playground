@@ -104,8 +104,7 @@ const EnvelopeUi: React.FC<NodeUiProps<EnvelopeNode>> = ({
             max={5000}
             step={1}
             label="Time"
-            format={(v) => (selectedPhaseData ? Math.round(v).toString() : "—")}
-            unit="ms"
+            format={(v) => (selectedPhaseData ? `${Math.round(v)} ms` : "—")}
             width={56}
             onDragStart={startBatch}
             onDragEnd={endBatch}

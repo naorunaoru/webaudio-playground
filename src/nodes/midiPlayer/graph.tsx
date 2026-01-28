@@ -10,6 +10,7 @@ import { Button, Knob, RadioGroup } from "@ui/components";
 import { MidiLibraryPanel } from "@ui/components/MidiLibraryPanel";
 import { ThemeProvider } from "@ui/context";
 import type { ControlTheme, OptionDef } from "@ui/types";
+import { percent } from "@ui/units";
 import { clamp } from "@utils/math";
 import type { MidiPlayerRuntimeState } from "./audio";
 
@@ -149,7 +150,7 @@ const MidiPlayerUi: React.FC<NodeUiProps<MidiPlayerNode>> = ({
             min={0.5}
             max={2}
             label="Speed"
-            format={(v) => `${Math.round(v * 100)}%`}
+            unit={percent}
             onDragStart={startBatch}
             onDragEnd={endBatch}
           />

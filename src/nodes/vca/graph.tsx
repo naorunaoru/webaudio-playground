@@ -1,6 +1,7 @@
 import type { GraphNode } from "@graph/types";
 import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
 import { Knob } from "@ui/components/Knob";
+import { percent } from "@ui/units";
 
 type VcaNode = Extract<GraphNode, { type: "vca" }>;
 
@@ -22,7 +23,7 @@ const VcaUi: React.FC<NodeUiProps<VcaNode>> = ({
         min={0}
         max={10}
         label="Gain"
-        format={(v) => `${Math.round(v * 100)}%`}
+        unit={percent}
         onDragStart={startBatch}
         onDragEnd={endBatch}
       />

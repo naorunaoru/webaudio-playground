@@ -5,7 +5,13 @@ import { Knob } from "@ui/components/Knob";
 import { Button } from "@ui/components/Button";
 import { WaveformIcon } from "@ui/icons";
 import type { OptionDef } from "@ui/types";
+import type { Unit } from "@ui/units";
 import type { LfoWaveform } from "./types";
+
+const lfoHz: Unit = {
+  format: (v) => `${v < 1 ? v.toFixed(2) : v.toFixed(1)} Hz`,
+  parse: (s) => parseFloat(s),
+};
 
 type LfoNode = Extract<GraphNode, { type: "lfo" }>;
 
@@ -73,8 +79,7 @@ const LfoUi: React.FC<NodeUiProps<LfoNode>> = ({
           min={0.01}
           max={50}
           label="Rate"
-          format={(v) => (v < 1 ? v.toFixed(2) : v.toFixed(1))}
-          unit="Hz"
+          unit={lfoHz}
           onDragStart={startBatch}
           onDragEnd={endBatch}
         />

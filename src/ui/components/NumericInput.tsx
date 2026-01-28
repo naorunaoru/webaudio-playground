@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import type { ContinuousControlProps, BaseControlProps } from "@ui/types";
+import type { Unit } from "@ui/units";
 import { useTheme } from "@ui/context";
 import { useDragValue } from "@ui/hooks";
 import { Label, type LabelPosition } from "./Label";
@@ -7,7 +8,7 @@ import { Label, type LabelPosition } from "./Label";
 export interface NumericInputProps extends ContinuousControlProps, BaseControlProps {
   format?: (value: number) => string;
   parse?: (input: string) => number;
-  unit?: string;
+  unit?: Unit;
   width?: number;
   /** Called when focus leaves the input */
   onBlur?: () => void;
@@ -76,14 +77,10 @@ export function NumericInput({
   }, []);
 
   // Format value for display
-  const formatValue = format ?? ((v: number) => v.toFixed(2));
-  const parseValue = parse ?? parseFloat;
+  const formatValue = unit?.format ?? format ?? ((v: number) => v.toFixed(2));
+  const parseValue = unit?.parse ?? parse ?? parseFloat;
   const formattedValue = formatValue(value);
-  const displayValue = isEditing
-    ? editingValue
-    : unit
-      ? `${formattedValue} ${unit}`
-      : formattedValue;
+  const displayValue = isEditing ? editingValue : formattedValue;
 
   // Clamp value to range
   const clamp = (v: number) => Math.max(min, Math.min(max, v));
@@ -131,6 +128,8 @@ export function NumericInput({
     } else if (e.key === "Escape") {
       setEditingValue(null);
       e.currentTarget.blur();
+    } else if (e.key === "Backspace") {
+      e.stopPropagation();
     } else if (!isEditing && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
       e.preventDefault();
       const arrowStep = step ?? 1;

@@ -9,6 +9,7 @@ import { Button, Knob, MidiNoteInput, RadioGroup } from "@ui/components";
 import { SampleLibraryPanel } from "@ui/components/SampleLibraryPanel";
 import { ThemeProvider } from "@ui/context";
 import type { ControlTheme, OptionDef } from "@ui/types";
+import { percent } from "@ui/units";
 import { clamp } from "@utils/math";
 
 type SamplePlayerRuntimeState = {
@@ -141,7 +142,7 @@ const SamplePlayerUi: React.FC<NodeUiProps<SamplePlayerNode>> = ({
             min={0}
             max={2}
             label="Gain"
-            format={(v) => `${Math.round(v * 100)}%`}
+            unit={percent}
             onDragStart={startBatch}
             onDragEnd={endBatch}
           />

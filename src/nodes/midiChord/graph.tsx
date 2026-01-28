@@ -59,8 +59,7 @@ const MidiChordUi: React.FC<NodeUiProps<MidiChordNode>> = ({
         max={100}
         step={1}
         label="Strum"
-        format={(v) => `${v > 0 ? "+" : ""}${Math.round(v)}`}
-        unit="ms"
+        format={(v) => `${v > 0 ? "+" : ""}${Math.round(v)} ms`}
         width={56}
         onDragStart={startBatch}
         onDragEnd={endBatch}

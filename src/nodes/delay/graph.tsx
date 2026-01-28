@@ -3,6 +3,7 @@ import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
 import { Knob } from "@ui/components/Knob";
 import { ThemeProvider } from "@ui/context";
 import type { ControlTheme } from "@ui/types/theme";
+import { ms, percent } from "@ui/units";
 import { clamp } from "@utils/math";
 
 const delayTheme: ControlTheme = {
@@ -33,8 +34,7 @@ const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode, connecte
           min={0}
           max={1500}
           label="Time"
-          format={(v) => Math.round(v).toString()}
-          unit="ms"
+          unit={ms}
           onDragStart={startBatch}
           onDragEnd={endBatch}
         />
@@ -44,7 +44,7 @@ const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode, connecte
           min={0}
           max={0.98}
           label={hasExternalFeedback ? "Return" : "Feedback"}
-          format={(v) => `${Math.round(v * 100)}%`}
+          unit={percent}
           onDragStart={startBatch}
           onDragEnd={endBatch}
         />
@@ -54,7 +54,7 @@ const DelayUi: React.FC<NodeUiProps<DelayNode>> = ({ node, onPatchNode, connecte
           min={0}
           max={1}
           label="Mix"
-          format={(v) => `${Math.round(v * 100)}%`}
+          unit={percent}
           onDragStart={startBatch}
           onDragEnd={endBatch}
         />

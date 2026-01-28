@@ -6,6 +6,7 @@ import type {
 import { Knob } from "@ui/components/Knob";
 import { ThemeProvider } from "@ui/context";
 import type { ControlTheme } from "@ui/types/theme";
+import { ms, percent, sec } from "@ui/units";
 import { clamp } from "@utils/math";
 
 const reverbTheme: ControlTheme = {
@@ -43,7 +44,7 @@ const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode, startB
             min={0}
             max={1}
             label="Mix"
-            format={(v) => `${Math.round(v * 100)}%`}
+            unit={percent}
             onDragStart={startBatch}
             onDragEnd={endBatch}
           />
@@ -53,7 +54,7 @@ const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode, startB
             min={0.1}
             max={10}
             label="Time"
-            unit="s"
+            unit={sec}
             onDragStart={startBatch}
             onDragEnd={endBatch}
           />
@@ -72,8 +73,7 @@ const ReverbUi: React.FC<NodeUiProps<ReverbNode>> = ({ node, onPatchNode, startB
             min={0}
             max={250}
             label="Pre-dly"
-            format={(v) => Math.round(v).toString()}
-            unit="ms"
+            unit={ms}
             onDragStart={startBatch}
             onDragEnd={endBatch}
           />

@@ -2,6 +2,7 @@ import { DEFAULT_CONTEXT_VALUES } from "@audio/context";
 import { useGraphMeta } from "@state";
 import { Button } from "@ui/components/Button";
 import { NumericInput } from "@ui/components/NumericInput";
+import { hz } from "@ui/units";
 import styles from "./ContextToolbar.module.css";
 
 export function ContextToolbar() {
@@ -81,10 +82,9 @@ export function ContextToolbar() {
           min={400}
           max={480}
           step={1}
-          format={(v) => v.toFixed(0)}
           label="A4"
           labelPosition="left"
-          unit="Hz"
+          unit={hz}
           width={56}
         />
       </div>

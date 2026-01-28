@@ -3,6 +3,7 @@ import { Knob } from "@ui/components/Knob";
 import { NumericInput } from "@ui/components/NumericInput";
 import { RadioGroup } from "@ui/components/RadioGroup";
 import { WithContextMenu } from "@ui/components/WithContextMenu";
+import { hz, ms } from "@ui/units";
 import {
   Menu,
   MenuItem,
@@ -233,8 +234,7 @@ export function Showcase() {
           max={20000}
           step={1}
           label="Freq"
-          unit="Hz"
-          format={(v) => v.toFixed(0)}
+          unit={hz}
         />
       ),
     },
@@ -262,8 +262,7 @@ export function Showcase() {
           min={0}
           max={1000}
           label="Fixed"
-          unit="ms"
-          format={(v) => v.toFixed(0)}
+          unit={ms}
           disabled
         />
       ),

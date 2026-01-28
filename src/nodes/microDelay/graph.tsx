@@ -27,17 +27,11 @@ const MicroDelayUi: React.FC<NodeUiProps<MicroDelayNode>> = ({
 
   // Format: show microseconds for very small values, milliseconds otherwise
   const format = (v: number) => {
-    if (v < 0.1) {
-      return `${(v * 1000).toFixed(0)}`;
-    } else if (v < 1) {
-      return `${(v * 1000).toFixed(0)}`;
-    } else {
-      return v.toFixed(1);
+    if (v < 1) {
+      return `${(v * 1000).toFixed(0)} µs`;
     }
+    return `${v.toFixed(1)} ms`;
   };
-
-  const unit = delayMs < 1 ? "µs" : "ms";
-  const displayValue = delayMs < 1 ? delayMs * 1000 : delayMs;
 
   return (
     <ThemeProvider theme={microDelayTheme}>
@@ -48,8 +42,7 @@ const MicroDelayUi: React.FC<NodeUiProps<MicroDelayNode>> = ({
           min={0.01}
           max={50}
           label="Time"
-          format={() => format(delayMs)}
-          unit={unit}
+          format={format}
           // logarithmic ?
           onDragStart={startBatch}
           onDragEnd={endBatch}

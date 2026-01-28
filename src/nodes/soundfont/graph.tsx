@@ -9,6 +9,7 @@ import { Button, Knob, NumericInput } from "@ui/components";
 import { SoundfontLibraryPanel } from "@ui/components/SoundfontLibraryPanel";
 import { ThemeProvider } from "@ui/context";
 import type { ControlTheme } from "@ui/types";
+import { percent } from "@ui/units";
 import { clamp } from "@utils/math";
 import type { SoundfontRuntimeState, SoundfontPreset } from "./audio";
 
@@ -185,7 +186,7 @@ const SoundfontUi: React.FC<NodeUiProps<SoundfontNode>> = ({
             min={0}
             max={2}
             label="Gain"
-            format={(v) => `${Math.round(v * 100)}%`}
+            unit={percent}
             onDragStart={startBatch}
             onDragEnd={endBatch}
           />

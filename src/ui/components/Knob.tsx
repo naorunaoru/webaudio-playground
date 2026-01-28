@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import type { ContinuousControlProps, BaseControlProps } from "@ui/types";
+import type { Unit } from "@ui/units";
 import { useTheme } from "@ui/context";
 import { useDragValue } from "@ui/hooks";
 import { Label, type LabelPosition } from "./Label";
@@ -12,7 +13,7 @@ const KNOB_SIZE = 32;
 export interface KnobProps extends ContinuousControlProps, BaseControlProps {
   indicator?: "arc" | "bipolar" | "catseye" | "pointer";
   format?: (value: number) => string;
-  unit?: string;
+  unit?: Unit;
   onDragStart?: () => void;
   onDragEnd?: () => void;
   /** When provided, the arc displays this value instead of the base value (for showing modulation) */
@@ -62,8 +63,8 @@ export function Knob({
   });
 
   // Format value for display
-  const formattedValue = format ? format(value) : value.toFixed(2);
-  const displayValue = unit ? `${formattedValue} ${unit}` : formattedValue;
+  const formatValue = unit?.format ?? format ?? ((v: number) => v.toFixed(2));
+  const displayValue = formatValue(value);
 
   // Normalize value to 0-1 range
   const normalized = (value - min) / (max - min);
@@ -210,6 +211,8 @@ export function Knob({
             width={56}
             autoFocus
             onBlur={handleEditBlur}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
           />
         </div>
         {label && labelPosition !== "left" && (

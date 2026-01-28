@@ -1,6 +1,7 @@
 import type { GraphNode } from "@graph/types";
 import type { NodeDefinition, NodeUiProps } from "@/types/graphNodeDefinition";
 import { Knob, RadioGroup } from "@ui/components";
+import { db, ms } from "@ui/units";
 import { clamp } from "@utils/math";
 
 type LimiterNode = Extract<GraphNode, { type: "limiter" }>;
@@ -57,8 +58,7 @@ const LimiterUi: React.FC<NodeUiProps<LimiterNode>> = ({ node, onPatchNode }) =>
           max={0}
           label="Ceiling"
           indicator="arc"
-          format={(v) => v.toFixed(1)}
-          unit="dB"
+          unit={db}
         />
         <Knob
           value={releaseMs}
@@ -67,8 +67,7 @@ const LimiterUi: React.FC<NodeUiProps<LimiterNode>> = ({ node, onPatchNode }) =>
           max={2000}
           label="Release"
           indicator="arc"
-          format={(v) => Math.round(v).toString()}
-          unit="ms"
+          unit={ms}
         />
         <Knob
           value={makeupDb}
@@ -77,8 +76,7 @@ const LimiterUi: React.FC<NodeUiProps<LimiterNode>> = ({ node, onPatchNode }) =>
           max={12}
           label="Makeup"
           indicator="bipolar"
-          format={(v) => v.toFixed(1)}
-          unit="dB"
+          unit={db}
         />
       </div>
 

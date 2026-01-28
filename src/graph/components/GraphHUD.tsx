@@ -1,4 +1,4 @@
-import styles from "@graph/GraphEditor.module.css";
+import styles from "./GraphHUD.module.css";
 
 export type GraphHUDProps = {
   status: string | null;

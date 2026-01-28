@@ -6,6 +6,7 @@ import { Knob, RadioGroup } from "@ui/components";
 import { ThemeProvider } from "@ui/context";
 import { FilterTypeIcon } from "@ui/icons";
 import type { ControlTheme, OptionDef } from "@ui/types";
+import { hz } from "@ui/units";
 import { clamp, clampPositive } from "@utils/math";
 import type { FilterRuntimeState } from "./audio";
 import type { FilterType } from "./types";
@@ -74,8 +75,7 @@ const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode, s
             min={20}
             max={20000}
             label="Freq"
-            format={(v) => Math.round(v).toString()}
-            unit="Hz"
+            unit={hz}
             onDragStart={startBatch}
             onDragEnd={endBatch}
             modulationValue={modulatedFreq}
@@ -96,8 +96,7 @@ const FilterUi: React.FC<NodeUiProps<FilterNodeGraph>> = ({ node, onPatchNode, s
             min={0}
             max={20000}
             label="Env"
-            format={(v) => Math.round(v).toString()}
-            unit="Hz"
+            unit={hz}
             onDragStart={startBatch}
             onDragEnd={endBatch}
           />
