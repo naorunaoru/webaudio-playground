@@ -110,7 +110,16 @@ function createMidiToCvRuntime(
     }
   }
 
-  function handleNoteOn(note: number, velocity: number, channel: number) {
+  // Portamento state
+  let portamentoActive = false; // true while at least one note is held
+  let portamentoHasPlayed = false; // true after the first note — stays true for glide
+  const heldNotes = new Set<number>(); // all physically held notes (portamento mode)
+
+  function handleNoteOnPolyphonic(
+    note: number,
+    velocity: number,
+    channel: number,
+  ) {
     // If this note is already playing, reuse its voice
     const existingVoice = noteToVoice.get(note);
 
@@ -135,6 +144,7 @@ function createMidiToCvRuntime(
     const vOct = midiNoteToVoct(note);
     const velCv = velocityToCv(velocity);
 
+    pitchSources[voiceIdx].offset.cancelScheduledValues(ctx.currentTime);
     pitchSources[voiceIdx].offset.setValueAtTime(vOct, ctx.currentTime);
     velocitySources[voiceIdx].offset.setValueAtTime(velCv, ctx.currentTime);
     // Reset pressure and slide for new note
@@ -157,11 +167,87 @@ function createMidiToCvRuntime(
     }
   }
 
+  function handleNoteOnPortamento(
+    note: number,
+    velocity: number,
+    channel: number,
+  ) {
+    const voiceIdx = 0;
+    const vOct = midiNoteToVoct(note);
+    const velCv = velocityToCv(velocity);
+    const glideTime = (currentState?.portamentoMs ?? 50) / 1000;
+
+    // Always glide if we've played at least one note before
+    pitchSources[voiceIdx].offset.cancelScheduledValues(ctx.currentTime);
+    if (portamentoHasPlayed) {
+      pitchSources[voiceIdx].offset.setValueAtTime(
+        pitchSources[voiceIdx].offset.value,
+        ctx.currentTime,
+      );
+      pitchSources[voiceIdx].offset.linearRampToValueAtTime(
+        vOct,
+        ctx.currentTime + glideTime,
+      );
+    } else {
+      pitchSources[voiceIdx].offset.setValueAtTime(vOct, ctx.currentTime);
+    }
+
+    // Only trigger gate if no note is currently held
+    if (!portamentoActive) {
+      allocator.markNoteActive(voiceIdx);
+
+      if (graphRef) {
+        dispatchEvent(graphRef, nodeId, "gate_out", {
+          type: "gate",
+          voice: voiceIdx,
+          state: "on",
+          time: ctx.currentTime,
+        });
+      }
+    }
+
+    velocitySources[voiceIdx].offset.setValueAtTime(velCv, ctx.currentTime);
+    pressureSources[voiceIdx].offset.setValueAtTime(0, ctx.currentTime);
+    slideSources[voiceIdx].offset.setValueAtTime(0, ctx.currentTime);
+
+    heldNotes.add(note);
+    // Only the current note maps to the single voice
+    noteToVoice.clear();
+    noteToVoice.set(note, voiceIdx);
+    channelToVoice.set(channel, voiceIdx);
+    voiceInfo.set(voiceIdx, { note, channel });
+    portamentoActive = true;
+    portamentoHasPlayed = true;
+  }
+
+  function handleNoteOn(note: number, velocity: number, channel: number) {
+    if (currentState?.mode === "portamento") {
+      handleNoteOnPortamento(note, velocity, channel);
+    } else {
+      handleNoteOnPolyphonic(note, velocity, channel);
+    }
+  }
+
   function handleNoteOff(
     note: number,
     channel: number,
     releaseVelocity?: number,
   ) {
+    // In portamento mode, the note may not be in noteToVoice (only the
+    // latest note is mapped there), but it's tracked in heldNotes.
+    if (portamentoActive) {
+      if (!heldNotes.has(note)) return;
+      const voiceIdx = 0;
+
+      if (sustainActive.get(channel)) {
+        sustainedNotes.set(note, { voiceIdx, channel });
+        return;
+      }
+
+      releaseVoice(note, voiceIdx, channel, releaseVelocity);
+      return;
+    }
+
     const voiceIdx = noteToVoice.get(note);
     if (voiceIdx === undefined) return;
 
@@ -194,6 +280,30 @@ function createMidiToCvRuntime(
     channelToVoice.delete(channel);
     voiceInfo.delete(voiceIdx);
     sustainedNotes.delete(note);
+    heldNotes.delete(note);
+
+    // In portamento mode, only release gate when no notes remain held
+    if (portamentoActive) {
+      if (heldNotes.size === 0) {
+        portamentoActive = false;
+      } else {
+        // Another note is still held — glide back to it
+        const lastNote = [...heldNotes].at(-1)!;
+        const vOct = midiNoteToVoct(lastNote);
+        const glideTime = (currentState?.portamentoMs ?? 50) / 1000;
+        pitchSources[voiceIdx].offset.cancelScheduledValues(ctx.currentTime);
+        pitchSources[voiceIdx].offset.setValueAtTime(
+          pitchSources[voiceIdx].offset.value,
+          ctx.currentTime,
+        );
+        pitchSources[voiceIdx].offset.linearRampToValueAtTime(
+          vOct,
+          ctx.currentTime + glideTime,
+        );
+        noteToVoice.set(lastNote, voiceIdx);
+        return;
+      }
+    }
 
     // Mark voice as note-off in allocator (consumers may still hold it)
     allocator.noteOff(voiceIdx);
@@ -262,6 +372,11 @@ function createMidiToCvRuntime(
   }
 
   function handleSystemReset() {
+    // Clear portamento flags first so releaseVoice takes the normal path
+    portamentoActive = false;
+    portamentoHasPlayed = false;
+    heldNotes.clear();
+
     // Release all active notes across all channels
     for (const [note, voiceIdx] of noteToVoice) {
       const channel =
@@ -314,27 +429,43 @@ function createMidiToCvRuntime(
     type: "midiToCv",
     voiceAllocator: allocator,
     updateState: (state) => {
-      const prevChannel = currentState?.channel ?? 0;
+      const prevState = currentState;
       currentState = state;
 
+      // When mode changes, release all voices and reset portamento state
+      if (state.mode !== prevState?.mode) {
+        handleSystemReset();
+
+        if (state.mode === "portamento") {
+          // Force to 1 voice in portamento mode
+          ensureAudioNodes(1);
+          allocator.requestResize(1);
+        } else {
+          ensureAudioNodes(state.voiceCount);
+          allocator.requestResize(state.voiceCount);
+        }
+      }
+
       // When the selected channel changes, release voices from non-matching channels
-      if (state.channel !== prevChannel) {
+      if (state.channel !== (prevState?.channel ?? 0)) {
         releaseVoicesNotOnChannel(state.channel);
       }
 
-      const currentCount = allocator.getVoiceCount();
-      if (state.voiceCount !== currentCount) {
-        // Ensure we have enough audio nodes first
-        ensureAudioNodes(state.voiceCount);
-        // Then request resize from allocator (may be deferred for shrinking)
-        allocator.requestResize(state.voiceCount);
+      // Only resize voices in polyphony mode
+      if (state.mode === "polyphony") {
+        const currentCount = allocator.getVoiceCount();
+        if (state.voiceCount !== currentCount) {
+          ensureAudioNodes(state.voiceCount);
+          allocator.requestResize(state.voiceCount);
+        }
       }
     },
     setGraphRef: (graph) => {
       graphRef = graph;
     },
     getAudioOutputs: (portId) => {
-      const count = allocator.getVoiceCount();
+      const count =
+        currentState?.mode === "portamento" ? 1 : allocator.getVoiceCount();
       if (portId === "pitch_out") {
         return pitchSources.slice(0, count);
       }
