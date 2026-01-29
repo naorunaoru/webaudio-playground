@@ -62,6 +62,8 @@ function createMidiToCvRuntime(
   const noteToVoice = new Map<number, number>();
   // Map from MIDI channel to voice index for MPE (pitch bend, aftertouch)
   const channelToVoice = new Map<number, number>();
+  // Reverse map: voice index to { note, channel } for channel-change release
+  const voiceInfo = new Map<number, { note: number; channel: number }>();
 
   // Sustain pedal state per channel (CC 64)
   const sustainActive = new Map<number, boolean>();
@@ -139,9 +141,10 @@ function createMidiToCvRuntime(
     pressureSources[voiceIdx].offset.setValueAtTime(0, ctx.currentTime);
     slideSources[voiceIdx].offset.setValueAtTime(0, ctx.currentTime);
 
-    // Track note-to-voice and channel-to-voice mappings (for MPE)
+    // Track note-to-voice, channel-to-voice, and voice-to-info mappings
     noteToVoice.set(note, voiceIdx);
     channelToVoice.set(channel, voiceIdx);
+    voiceInfo.set(voiceIdx, { note, channel });
 
     // Dispatch gate on
     if (graphRef) {
@@ -186,9 +189,10 @@ function createMidiToCvRuntime(
       liftSources[voiceIdx].offset.setValueAtTime(liftCv, ctx.currentTime);
     }
 
-    // Clear note-to-voice and channel-to-voice mappings
+    // Clear note-to-voice, channel-to-voice, and voice-info mappings
     noteToVoice.delete(note);
     channelToVoice.delete(channel);
+    voiceInfo.delete(voiceIdx);
     sustainedNotes.delete(note);
 
     // Mark voice as note-off in allocator (consumers may still hold it)
@@ -237,6 +241,24 @@ function createMidiToCvRuntime(
     }
     // Clear sustain state for this channel
     sustainActive.delete(channel);
+  }
+
+  function releaseVoicesNotOnChannel(targetChannel: number) {
+    // Release all active voices that don't match the new channel.
+    // targetChannel === 0 means "all channels", so nothing to release.
+    if (targetChannel === 0) return;
+
+    for (const [voiceIdx, info] of voiceInfo) {
+      if (info.channel !== targetChannel) {
+        releaseVoice(info.note, voiceIdx, info.channel);
+      }
+    }
+    // Also release sustained notes on non-matching channels
+    for (const [note, held] of sustainedNotes) {
+      if (held.channel !== targetChannel) {
+        releaseVoice(note, held.voiceIdx, held.channel);
+      }
+    }
   }
 
   function handleSystemReset() {
@@ -292,7 +314,14 @@ function createMidiToCvRuntime(
     type: "midiToCv",
     voiceAllocator: allocator,
     updateState: (state) => {
+      const prevChannel = currentState?.channel ?? 0;
       currentState = state;
+
+      // When the selected channel changes, release voices from non-matching channels
+      if (state.channel !== prevChannel) {
+        releaseVoicesNotOnChannel(state.channel);
+      }
+
       const currentCount = allocator.getVoiceCount();
       if (state.voiceCount !== currentCount) {
         // Ensure we have enough audio nodes first
