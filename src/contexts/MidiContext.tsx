@@ -169,14 +169,18 @@ export function useMidi(): MidiContextValue {
 
 /**
  * Subscribe to MIDI events dispatched to a specific node.
- * Returns a Set of currently active (held) notes.
+ * Returns a Map from note number to the Set of channels currently playing that note.
  */
-export function useMidiActiveNotes(nodeId: NodeId | null): Set<number> {
-  const [activeNotes, setActiveNotes] = useState<Set<number>>(new Set());
+export function useMidiActiveNotes(
+  nodeId: NodeId | null
+): Map<number, Set<number>> {
+  const [activeNotes, setActiveNotes] = useState<Map<number, Set<number>>>(
+    () => new Map()
+  );
 
   useEffect(() => {
     if (!nodeId) {
-      setActiveNotes(new Set());
+      setActiveNotes(new Map());
       return;
     }
 
@@ -187,14 +191,24 @@ export function useMidiActiveNotes(nodeId: NodeId | null): Set<number> {
       const { event } = evt;
       if (event.type === "noteOn") {
         setActiveNotes((prev) => {
-          const next = new Set(prev);
-          next.add(event.note);
+          const next = new Map(prev);
+          const channels = new Set(prev.get(event.note));
+          channels.add(event.channel);
+          next.set(event.note, channels);
           return next;
         });
       } else if (event.type === "noteOff") {
         setActiveNotes((prev) => {
-          const next = new Set(prev);
-          next.delete(event.note);
+          const channels = prev.get(event.note);
+          if (!channels) return prev;
+          const next = new Map(prev);
+          const nextChannels = new Set(channels);
+          nextChannels.delete(event.channel);
+          if (nextChannels.size === 0) {
+            next.delete(event.note);
+          } else {
+            next.set(event.note, nextChannels);
+          }
           return next;
         });
       }
@@ -202,9 +216,50 @@ export function useMidiActiveNotes(nodeId: NodeId | null): Set<number> {
 
     return () => {
       unsubscribe();
-      setActiveNotes(new Set());
+      setActiveNotes(new Map());
     };
   }, [nodeId]);
 
   return activeNotes;
+}
+
+/**
+ * Subscribe to pitch bend events dispatched to a specific node.
+ * Returns a Map from MIDI channel to the current bend in semitones.
+ */
+export function useMidiPitchBend(
+  nodeId: NodeId | null,
+  /** Pitch bend range in semitones (default: 48 for MPE) */
+  range: number = 48,
+): Map<number, number> {
+  const [bends, setBends] = useState<Map<number, number>>(() => new Map());
+
+  useEffect(() => {
+    if (!nodeId) {
+      setBends(new Map());
+      return;
+    }
+
+    const engine = getAudioEngine();
+    const unsubscribe = engine.onMidiDispatch((evt: MidiDispatchEvent) => {
+      if (evt.nodeId !== nodeId) return;
+      const { event } = evt;
+
+      if (event.type === "pitchBend") {
+        const semitones = (event.value / 8192) * range;
+        setBends((prev) => {
+          const next = new Map(prev);
+          next.set(event.channel, semitones);
+          return next;
+        });
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      setBends(new Map());
+    };
+  }, [nodeId, range]);
+
+  return bends;
 }

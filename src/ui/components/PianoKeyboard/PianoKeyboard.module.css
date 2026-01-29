@@ -6,8 +6,26 @@
   --black-key-height: 60px;
 
   position: relative;
-  display: inline-block;
+  overflow-x: auto;
+  overflow-y: hidden;
   user-select: none;
+  margin-top: -42px;
+}
+
+.waterfall {
+  display: inline-block;
+  overflow: hidden;
+}
+
+.waterfallCanvas {
+  display: block;
+  height: 100%;
+  image-rendering: pixelated;
+}
+
+.keyboardInner {
+  position: relative;
+  display: inline-block;
 }
 
 .keyboard[data-disabled="true"] {
@@ -40,7 +58,11 @@
 }
 
 .whiteKey[data-active="true"] {
-  background: linear-gradient(to bottom, #a78bfa 0%, #8b5cf6 100%);
+  background: linear-gradient(
+    to bottom,
+    hsl(var(--key-hue), 70%, 65%) 0%,
+    hsl(var(--key-hue), 75%, 55%) 100%
+  );
 }
 
 .whiteKey:active,
@@ -66,6 +88,7 @@
   cursor: pointer;
   pointer-events: auto;
   transition: background 50ms;
+  transform: translateY(-1px);
 }
 
 .blackKey:hover:not([data-active="true"]) {
@@ -73,12 +96,16 @@
 }
 
 .blackKey[data-active="true"] {
-  background: linear-gradient(to bottom, #7c3aed 0%, #5b21b6 100%);
+  background: linear-gradient(
+    to bottom,
+    hsl(var(--key-hue), 80%, 40%) 0%,
+    hsl(var(--key-hue), 85%, 30%) 100%
+  );
 }
 
 .blackKey:active,
 .blackKey[data-active="true"] {
-  transform: translateY(1px);
+  transform: translateY(0px);
 }
 
 .keyLabel {
@@ -93,9 +120,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.3);
   border-radius: 4px;
   font-size: 11px;
   color: rgba(255, 255, 255, 0.7);
-  pointer-events: none;
 }

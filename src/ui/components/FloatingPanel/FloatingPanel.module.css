@@ -18,11 +18,18 @@
 }
 
 .header {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 32px;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 0 10px;
+  background: rgba(8, 10, 14, 0.2);
+  backdrop-filter: blur(4px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   cursor: grab;
   user-select: none;
@@ -59,5 +66,32 @@
 }
 
 .content {
-  padding: 10px;
+  padding: 42px 10px 10px;
+  overflow: hidden;
+}
+
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+}
+
+.resizeHandle::after {
+  content: "";
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 24px;
+  border-radius: 1px;
+  background: rgba(255, 255, 255, 0.15);
+  transition: background 150ms;
+}
+
+.resizeHandle:hover::after {
+  background: rgba(255, 255, 255, 0.35);
 }

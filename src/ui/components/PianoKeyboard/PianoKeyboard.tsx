@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { NodeId } from "@graph/types";
 import { useSelection, useMidi, useMidiActiveNotes } from "@contexts";
+import { MidiWaterfall } from "./MidiWaterfall";
+import { channelHue } from "./helpers";
 import styles from "./PianoKeyboard.module.css";
 
 // MIDI note numbers for one octave (C = 0 relative to octave start)
@@ -22,8 +24,8 @@ export interface PianoKeyboardProps {
 }
 
 export function PianoKeyboard({
-  baseOctave = 3,
-  octaves = 2,
+  baseOctave = 2,
+  octaves = 5,
   minVelocity = 20,
   maxVelocity = 127,
   channel = 0,
@@ -31,8 +33,10 @@ export function PianoKeyboard({
   const { selected } = useSelection();
   const { dispatchMidiToNode } = useMidi();
 
-  // Track locally pressed keys (by pointer)
-  const [pressedKeys, setPressedKeys] = useState<Set<number>>(new Set());
+  // Track locally pressed keys (by pointer) — maps note to channel
+  const [pressedKeys, setPressedKeys] = useState<Map<number, number>>(
+    new Map(),
+  );
   const activePointers = useRef<Map<number, number>>(new Map()); // pointerId -> note
   const draggingPointers = useRef<Set<number>>(new Set()); // pointers currently held down
 
@@ -49,7 +53,7 @@ export function PianoKeyboard({
       if (!targetNodeId) return;
 
       activePointers.current.set(pointerId, note);
-      setPressedKeys((prev) => new Set(prev).add(note));
+      setPressedKeys((prev) => new Map(prev).set(note, channel));
 
       await dispatchMidiToNode(targetNodeId, {
         type: "noteOn",
@@ -58,7 +62,7 @@ export function PianoKeyboard({
         channel,
       });
     },
-    [targetNodeId, dispatchMidiToNode, channel]
+    [targetNodeId, dispatchMidiToNode, channel],
   );
 
   const handleNoteOff = useCallback(
@@ -68,7 +72,7 @@ export function PianoKeyboard({
 
       activePointers.current.delete(pointerId);
       setPressedKeys((prev) => {
-        const next = new Set(prev);
+        const next = new Map(prev);
         next.delete(note);
         return next;
       });
@@ -81,7 +85,7 @@ export function PianoKeyboard({
         channel,
       });
     },
-    [targetNodeId, dispatchMidiToNode, channel]
+    [targetNodeId, dispatchMidiToNode, channel],
   );
 
   // Calculate velocity from pointer Y position within a key element
@@ -90,11 +94,11 @@ export function PianoKeyboard({
       const rect = e.currentTarget.getBoundingClientRect();
       const relativeY = Math.max(
         0,
-        Math.min(1, (e.clientY - rect.top) / rect.height)
+        Math.min(1, (e.clientY - rect.top) / rect.height),
       );
       return Math.round(minVelocity + relativeY * (maxVelocity - minVelocity));
     },
-    [minVelocity, maxVelocity]
+    [minVelocity, maxVelocity],
   );
 
   const handlePointerDown = useCallback(
@@ -104,7 +108,7 @@ export function PianoKeyboard({
       draggingPointers.current.add(e.pointerId);
       void handleNoteOn(note, e.pointerId, calculateVelocity(e));
     },
-    [handleNoteOn, calculateVelocity]
+    [handleNoteOn, calculateVelocity],
   );
 
   const handlePointerUp = useCallback(
@@ -112,7 +116,7 @@ export function PianoKeyboard({
       draggingPointers.current.delete(e.pointerId);
       void handleNoteOff(e.pointerId);
     },
-    [handleNoteOff]
+    [handleNoteOff],
   );
 
   const handlePointerCancel = useCallback(
@@ -120,7 +124,7 @@ export function PianoKeyboard({
       draggingPointers.current.delete(e.pointerId);
       void handleNoteOff(e.pointerId);
     },
-    [handleNoteOff]
+    [handleNoteOff],
   );
 
   const handlePointerEnter = useCallback(
@@ -129,7 +133,7 @@ export function PianoKeyboard({
       if (!draggingPointers.current.has(e.pointerId)) return;
       void handleNoteOn(note, e.pointerId, calculateVelocity(e));
     },
-    [handleNoteOn, calculateVelocity]
+    [handleNoteOn, calculateVelocity],
   );
 
   const handlePointerLeave = useCallback(
@@ -138,7 +142,7 @@ export function PianoKeyboard({
       if (!draggingPointers.current.has(e.pointerId)) return;
       void handleNoteOff(e.pointerId);
     },
-    [handleNoteOff]
+    [handleNoteOff],
   );
 
   // Global pointer up listener to handle releases outside the keyboard
@@ -184,51 +188,89 @@ export function PianoKeyboard({
     }
   }
 
-  const isKeyActive = (note: number) =>
-    pressedKeys.has(note) || externalActiveNotes.has(note);
+  /** Returns the MIDI channel for an active note, or null if inactive. */
+  const getActiveChannel = (note: number): number | null => {
+    if (pressedKeys.has(note)) return pressedKeys.get(note)!;
+    const channels = externalActiveNotes.get(note);
+    if (channels && channels.size > 0) return channels.values().next().value!;
+    return null;
+  };
+
+  const keyboardInnerRef = useRef<HTMLDivElement>(null);
 
   const disabled = !targetNodeId;
 
   return (
-    <div className={styles.keyboard} data-disabled={disabled}>
-      <div className={styles.whiteKeys}>
-        {whiteKeys.map(({ note, label }) => (
-          <button
-            key={note}
-            type="button"
-            className={styles.whiteKey}
-            data-active={isKeyActive(note)}
-            disabled={disabled}
-            onPointerDown={handlePointerDown(note)}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerCancel}
-            onPointerEnter={handlePointerEnter(note)}
-            onPointerLeave={handlePointerLeave}
-          >
-            {label && <span className={styles.keyLabel}>{label}</span>}
-          </button>
-        ))}
-      </div>
-      <div className={styles.blackKeys}>
-        {blackKeys.map(({ note, position }) => (
-          <button
-            key={note}
-            type="button"
-            className={styles.blackKey}
-            style={{
-              left: `calc(${position} * (var(--white-key-width) + var(--white-key-gap)) + var(--white-key-width) * 0.65)`,
-            }}
-            data-active={isKeyActive(note)}
-            disabled={disabled}
-            onPointerDown={handlePointerDown(note)}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerCancel}
-            onPointerEnter={handlePointerEnter(note)}
-            onPointerLeave={handlePointerLeave}
-          />
-        ))}
+    <>
+      <div className={styles.keyboard} data-disabled={disabled}>
+        <MidiWaterfall
+          keyboardRef={keyboardInnerRef}
+          getActiveChannel={getActiveChannel}
+          height={32}
+          noteMin={(baseOctave + 1) * 12}
+          noteCount={octaves * 12}
+        />
+        <div ref={keyboardInnerRef} className={styles.keyboardInner}>
+          <div className={styles.whiteKeys}>
+            {whiteKeys.map(({ note, label }) => {
+              const ch = getActiveChannel(note);
+              const active = ch !== null;
+              return (
+                <button
+                  key={note}
+                  type="button"
+                  className={styles.whiteKey}
+                  data-note={note}
+                  data-active={active}
+                  style={
+                    active
+                      ? ({
+                          "--key-hue": channelHue(ch),
+                        } as React.CSSProperties)
+                      : undefined
+                  }
+                  disabled={disabled}
+                  onPointerDown={handlePointerDown(note)}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerCancel}
+                  onPointerEnter={handlePointerEnter(note)}
+                  onPointerLeave={handlePointerLeave}
+                >
+                  {label && <span className={styles.keyLabel}>{label}</span>}
+                </button>
+              );
+            })}
+          </div>
+          <div className={styles.blackKeys}>
+            {blackKeys.map(({ note, position }) => {
+              const ch = getActiveChannel(note);
+              const active = ch !== null;
+              return (
+                <button
+                  key={note}
+                  type="button"
+                  className={styles.blackKey}
+                  data-note={note}
+                  style={{
+                    left: `calc(${position} * (var(--white-key-width) + var(--white-key-gap)) + var(--white-key-width) * 0.65)`,
+                    ...(active
+                      ? ({ "--key-hue": channelHue(ch) } as React.CSSProperties)
+                      : undefined),
+                  }}
+                  data-active={active}
+                  disabled={disabled}
+                  onPointerDown={handlePointerDown(note)}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerCancel}
+                  onPointerEnter={handlePointerEnter(note)}
+                  onPointerLeave={handlePointerLeave}
+                />
+              );
+            })}
+          </div>
+        </div>
       </div>
       {disabled && <div className={styles.disabledOverlay}>Select a node</div>}
-    </div>
+    </>
   );
 }

@@ -16,6 +16,12 @@ export interface FloatingPanelProps {
   defaultPosition?: { x: number; y: number };
   position?: { x: number; y: number };
   onPositionChange?: (position: { x: number; y: number }) => void;
+  /** Enable horizontal resize handle on the right edge. */
+  resizable?: boolean;
+  /** Initial width when resizable (default: 420). */
+  defaultWidth?: number;
+  /** Minimum width when resizable (default: 120). */
+  minWidth?: number;
   children: ReactNode;
 }
 
@@ -26,6 +32,9 @@ export function FloatingPanel({
   defaultPosition,
   position: controlledPosition,
   onPositionChange,
+  resizable = false,
+  defaultWidth = 420,
+  minWidth = 120,
   children,
 }: FloatingPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -34,6 +43,7 @@ export function FloatingPanel({
     y: controlledPosition?.y ?? defaultPosition?.y ?? 100,
   }));
   const [isVisible, setIsVisible] = useState(false);
+  const [width, setWidth] = useState(defaultWidth);
 
   // Use controlled position if provided, otherwise internal
   const position = controlledPosition ?? internalPosition;
@@ -133,13 +143,42 @@ export function FloatingPanel({
     [position]
   );
 
+  const handleResizePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const startX = e.clientX;
+      const startWidth = width;
+
+      const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+        const newWidth = Math.max(minWidth, startWidth + moveEvent.clientX - startX);
+        setWidth(newWidth);
+      };
+
+      const handlePointerUp = () => {
+        document.removeEventListener("pointermove", handlePointerMove);
+        document.removeEventListener("pointerup", handlePointerUp);
+      };
+
+      document.addEventListener("pointermove", handlePointerMove);
+      document.addEventListener("pointerup", handlePointerUp);
+    },
+    [width, minWidth]
+  );
+
   if (!open) return null;
 
   return createPortal(
     <div
       ref={panelRef}
       className={styles.panel}
-      style={{ left: position.x, top: position.y }}
+      style={{
+        left: position.x,
+        top: position.y,
+        ...(resizable ? { width } : undefined),
+      }}
       data-open={isVisible}
     >
       <div
@@ -159,6 +198,12 @@ export function FloatingPanel({
         </button>
       </div>
       <div className={styles.content}>{children}</div>
+      {resizable && (
+        <div
+          className={styles.resizeHandle}
+          onPointerDown={handleResizePointerDown}
+        />
+      )}
     </div>,
     document.body
   );

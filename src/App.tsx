@@ -289,8 +289,9 @@ function AppContent() {
           defaultPosition={defaultKeyboardPosition}
           position={keyboardPosition}
           onPositionChange={handleKeyboardPositionChange}
+          resizable
         >
-          <PianoKeyboard octaves={2} />
+          <PianoKeyboard />
         </FloatingPanel>
       </MidiProvider>
     </SelectionProvider>
