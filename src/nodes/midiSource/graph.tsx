@@ -20,7 +20,7 @@ function defaultState(): MidiSourceNode["state"] {
   return {
     note: 60,
     velocity: 100,
-    channel: 1,
+    channel: 0,
     isEmitting: false,
     lastTriggeredAtMs: null,
   };

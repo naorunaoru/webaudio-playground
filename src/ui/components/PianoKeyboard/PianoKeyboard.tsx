@@ -17,7 +17,7 @@ export interface PianoKeyboardProps {
   minVelocity?: number;
   /** Maximum velocity at bottom of key (default: 127) */
   maxVelocity?: number;
-  /** MIDI channel (default: 1) */
+  /** MIDI channel 0-15 (default: 0) */
   channel?: number;
 }
 
@@ -26,7 +26,7 @@ export function PianoKeyboard({
   octaves = 2,
   minVelocity = 20,
   maxVelocity = 127,
-  channel = 1,
+  channel = 0,
 }: PianoKeyboardProps) {
   const { selected } = useSelection();
   const { dispatchMidiToNode } = useMidi();
