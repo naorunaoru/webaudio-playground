@@ -1,4 +1,10 @@
-import { forwardRef, useCallback, useImperativeHandle, useMemo } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+} from "react";
 import type {
   ConnectionEndpoint,
   GraphNode,
@@ -6,9 +12,8 @@ import type {
   PortKind,
 } from "@graph/types";
 import type { StructuralState } from "@state";
+import type { NodeDimensions } from "@graph/hooks";
 import { localPointFromPointerEvent, viewToWorld } from "@graph/coordinates";
-import { portMetaForNode } from "@graph/graphUtils";
-import { nodeHeight } from "@graph/layout";
 import { useDragInteraction } from "@graph/hooks";
 import { DragConnectionPreview } from "./DragConnectionPreview";
 import styles from "./DragInteractionLayer.module.css";
@@ -37,7 +42,7 @@ type DragInteractionLayerProps = {
   onDragStart: () => void;
   onDragEnd: () => void;
   getNode: (nodeId: string) => GraphNode | undefined;
-  nodeWidths: Record<string, number>;
+  nodeDimensions: NodeDimensions;
   structural: StructuralState;
   selectNodes: (nodeIds: Set<NodeId>) => void;
   deselect: () => void;
@@ -55,7 +60,7 @@ export const DragInteractionLayer = forwardRef<
     onDragStart,
     onDragEnd,
     getNode,
-    nodeWidths,
+    nodeDimensions,
     structural,
     selectNodes,
     deselect,
@@ -119,58 +124,47 @@ export const DragInteractionLayer = forwardRef<
   );
 
   const handlePointerUp = useCallback(
-    (e: React.PointerEvent) => {
+    (_e: React.PointerEvent) => {
       if (drag.type !== "marquee") return;
-
-      const root = rootRef.current;
-      if (!root) return;
-
-      const local = localPointFromPointerEvent(root, e);
-      const scroll = scrollRef.current;
-      if (!scroll) return;
-      const world = viewToWorld(local, scroll.x, scroll.y);
-
-      const minX = Math.min(drag.startX, world.x);
-      const maxX = Math.max(drag.startX, world.x);
-      const minY = Math.min(drag.startY, world.y);
-      const maxY = Math.max(drag.startY, world.y);
-
-      const selectedNodeIds = new Set<string>();
-      for (const nodeId of structural.nodeIds) {
-        const node = getNode(nodeId);
-        if (!node) continue;
-
-        const nodeWidth = nodeWidths[node.id] ?? 240;
-        const ports = portMetaForNode(node);
-        const nodeH = nodeHeight(ports.length);
-
-        const nodeRight = node.x + nodeWidth;
-        const nodeBottom = node.y + nodeH;
-
-        if (
-          node.x < maxX &&
-          nodeRight > minX &&
-          node.y < maxY &&
-          nodeBottom > minY
-        ) {
-          selectedNodeIds.add(node.id);
-        }
-      }
-
-      selectNodes(selectedNodeIds);
       setDrag({ type: "none" });
     },
-    [
-      drag,
-      structural,
-      getNode,
-      nodeWidths,
-      selectNodes,
-      setDrag,
-      rootRef,
-      scrollRef,
-    ],
+    [drag, setDrag],
   );
+
+  useEffect(() => {
+    if (drag.type !== "marquee") return;
+
+    const minX = Math.min(drag.startX, drag.currentX);
+    const maxX = Math.max(drag.startX, drag.currentX);
+    const minY = Math.min(drag.startY, drag.currentY);
+    const maxY = Math.max(drag.startY, drag.currentY);
+
+    const selectedNodeIds = new Set<string>();
+    for (const nodeId of structural.nodeIds) {
+      const node = getNode(nodeId);
+      if (!node) continue;
+
+      const dims = nodeDimensions[node.id];
+      if (!dims) continue;
+
+      const nodeWidth = dims.width;
+      const nodeH = dims.height;
+
+      const nodeRight = node.x + nodeWidth;
+      const nodeBottom = node.y + nodeH;
+
+      if (
+        node.x < maxX &&
+        nodeRight > minX &&
+        node.y < maxY &&
+        nodeBottom > minY
+      ) {
+        selectedNodeIds.add(node.id);
+      }
+    }
+
+    selectNodes(selectedNodeIds);
+  }, [drag, structural, getNode, nodeDimensions, selectNodes]);
 
   useImperativeHandle(
     ref,
@@ -213,7 +207,7 @@ export const DragInteractionLayer = forwardRef<
         <DragConnectionPreview
           drag={drag}
           getNode={getNode}
-          nodeWidths={nodeWidths}
+          nodeDimensions={nodeDimensions}
         />
       </svg>
 

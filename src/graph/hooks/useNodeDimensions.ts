@@ -1,23 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import type { NodeId } from "@graph/types";
 
-export function useNodeWidths() {
+export type NodeDimensions = Record<string, { width: number; height: number }>;
+
+export function useNodeDimensions() {
   const nodeElsRef = useRef(new Map<NodeId, HTMLElement>());
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  const [nodeWidths, setNodeWidths] = useState<Record<string, number>>({});
+  const [nodeDimensions, setNodeDimensions] = useState<NodeDimensions>({});
 
   useEffect(() => {
     const ro = new ResizeObserver((entries) => {
-      setNodeWidths((prev) => {
-        let next: Record<string, number> | null = null;
+      setNodeDimensions((prev) => {
+        let next: NodeDimensions | null = null;
         for (const entry of entries) {
           const el = entry.target as HTMLElement;
           const nodeId = el.getAttribute("data-node-id");
           if (!nodeId) continue;
           const w = Math.max(0, Math.round(entry.contentRect.width));
-          if (prev[nodeId] === w) continue;
+          const h = Math.max(0, Math.round(entry.contentRect.height));
+          const existing = prev[nodeId];
+          if (existing && existing.width === w && existing.height === h)
+            continue;
           next ??= { ...prev };
-          next[nodeId] = w;
+          next[nodeId] = { width: w, height: h };
         }
         return next ?? prev;
       });
@@ -42,5 +47,5 @@ export function useNodeWidths() {
     if (ro) ro.observe(el);
   };
 
-  return { nodeWidths, registerNodeEl };
+  return { nodeDimensions, registerNodeEl };
 }

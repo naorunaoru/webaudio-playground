@@ -1,4 +1,5 @@
 import type { DragState, GraphNode } from "@graph/types";
+import type { NodeDimensions } from "@graph/hooks";
 import { portKindColor } from "@graph/nodeRegistry";
 import { bezierPath } from "@graph/coordinates";
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT } from "@graph/layout";
@@ -7,13 +8,13 @@ import { portById, portColumnIndex, portMetaForNode } from "@graph/graphUtils";
 export type DragConnectionPreviewProps = {
   drag: DragState;
   getNode: (nodeId: string) => GraphNode | undefined;
-  nodeWidths: Record<string, number>;
+  nodeDimensions: NodeDimensions;
 };
 
 export function DragConnectionPreview({
   drag,
   getNode,
-  nodeWidths,
+  nodeDimensions,
 }: DragConnectionPreviewProps) {
   if (drag.type !== "connect") return null;
 
@@ -25,7 +26,7 @@ export function DragConnectionPreview({
   if (!fromPort) return null;
 
   const fromColIdx = portColumnIndex(ports, fromPort.id);
-  const width = nodeWidths[fromNode.id] ?? 240;
+  const width = nodeDimensions[fromNode.id]?.width ?? 240;
   const x = fromPort.direction === "in" ? fromNode.x : fromNode.x + width;
   const y =
     fromNode.y +

@@ -18,7 +18,7 @@ import type {
 import { NODE_HEADER_HEIGHT, PORT_ROW_HEIGHT } from "./layout";
 import { bezierPath } from "./coordinates";
 import { canConnect, portColumnIndex, portMetaForNode } from "./graphUtils";
-import { useNodeWidths } from "./hooks";
+import { useNodeDimensions } from "./hooks";
 import {
   DragInteractionLayer,
   GraphConnectionPath,
@@ -70,7 +70,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       useSelection();
     const { emitMidi } = useMidi();
 
-    const { nodeWidths, registerNodeEl } = useNodeWidths();
+    const { nodeDimensions, registerNodeEl } = useNodeDimensions();
 
     const dragLayerRef = useRef<DragInteractionLayerHandle>(null);
 
@@ -226,7 +226,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         port: { direction: "in" | "out" },
         portIdx: number
       ) => {
-        const width = nodeWidths[node.id] ?? 240;
+        const width = nodeDimensions[node.id]?.width ?? 240;
         let x = port.direction === "in" ? node.x : node.x + width;
         x += 1;
         let y =
@@ -267,7 +267,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         .filter((v): v is NonNullable<typeof v> => v != null);
 
       return { connectionPaths, connectedPortsByNode };
-    }, [structural, nodeWidths, store]);
+    }, [structural, nodeDimensions, store]);
 
     const worldSize = useMemo(() => {
       const { nodeIds } = structural;
@@ -278,7 +278,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
       for (const nodeId of nodeIds) {
         const node = store.getNode(nodeId);
         if (node) {
-          maxX = Math.max(maxX, node.x + (nodeWidths[node.id] ?? 240));
+          maxX = Math.max(maxX, node.x + (nodeDimensions[node.id]?.width ?? 240));
           maxY = Math.max(maxY, node.y);
         }
       }
@@ -286,7 +286,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
         width: Math.max(2400, Math.ceil(maxX + 1200)),
         height: Math.max(1600, Math.ceil(maxY + 1200)),
       };
-    }, [structural, nodeWidths, store]);
+    }, [structural, nodeDimensions, store]);
 
     const handlePatchNode = useCallback(
       (nodeId: string, patch: Partial<any>) => {
@@ -490,7 +490,7 @@ export const GraphEditor = forwardRef<GraphEditorHandle, GraphEditorProps>(
             onDragStart={startBatch}
             onDragEnd={endBatch}
             getNode={getNode}
-            nodeWidths={nodeWidths}
+            nodeDimensions={nodeDimensions}
             structural={structural}
             selectNodes={selectNodes}
             deselect={deselect}
