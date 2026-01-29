@@ -1,28 +1,23 @@
 # webaudio-playground
 
-TW: vibe code
+*TW: vibe code*
 
-A node-based audio synthesizer. Make your worst sounds by connecting modular nodes: oscillators, filters, envelopes, effects, and more.
+This is a node-based audio synth for the browser.
 
-Heavily inspired by SunVox and Pure Data. Warning: may contain traces of your favorite DAW.
-
-This project is in active development and technically hasn't even reached version 0.0.1.
+Data flows across three domains: MIDI, CV/gate, and audio.
 
 ## Features
 
-- Visual node graph editor with drag-and-drop connections
-- MIDI/CC routing for modulation and control
-- Real-time audio metering and waveform display
-- AudioWorklet + WASM support for custom DSP
+- MIDI event streaming through MIDI player node
+- MIDI to CV boundary node which outputs synth-friendly pitch in V/oct, gate/trigger, and CV
+- Polyphony: each cable represents a set of voices, which can be independently held by downstream consumers
+- A set of nodes enough to build frequency, phase, and ring modulation synthesis: VCO, VCA, LFO, Ratio, Filter, others
+- An Envelope node with arbitrary number of phases and support for sustain/loop
+- A Soundfont player using [js-synthesizer](https://github.com/jet2jet/js-synthesizer) (FluidSynth Emscripten build)
+- Convolutional reverb, delay, and limiter nodes; the latter is built with Rust (because why not)
+- Export/import in a simple .zip containing serialized project data and assets
 
-## Wishful thinking
-
-- A sequencer, maybe even several different ones
-- Open Sound Control integration
-- Electron app
-    - file system access for project and sample management
-    - VST host maybe?
-    - lower level transports for OSC data
+The project is in active development and technically hasn't even reached version 0.0.1.
 
 ## Dev
 
@@ -61,11 +56,3 @@ SKIP_WASM=1 npm run dev
 npm run typecheck
 npm run build
 ```
-
-## Documentation
-
-| Document | Description |
-|----------|-------------|
-| [docs/nodes/](docs/nodes/) | Audio node system — how to add new nodes |
-| [docs/ui/](docs/ui/) | UI component library — controls, primitives, theming |
-| [docs/project-format.md](docs/project-format.md) | Project `.zip` format — graph + embedded samples |
